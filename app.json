@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "AI Scout",
+    "slug": "ai-scout",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#080B14"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.aiscout.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#080B14"
+      },
+      "package": "com.aiscout.app"
+    },
+    "web": {
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
