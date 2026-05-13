@@ -1,33 +1,31 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CHAT_SUGGESTIONS } from '../constants/mockData';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useApp } from '../context/AppProvider';
 
 function ChatMessage({ role, text }) {
   const isUser = role === 'user';
   return (
-    <View style={[
-      styles.msgRow,
-      isUser ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' },
-    ]}>
-      {!isUser && (
+    <View style={[styles.msgRow, isUser ? styles.userRow : styles.botRow]}>
+      {!isUser ? (
         <View style={styles.botAvatar}>
           <Ionicons name="hardware-chip-outline" size={14} color="#2563EB" />
         </View>
-      )}
+      ) : null}
       <View style={[styles.msgBubble, isUser ? styles.userBubble : styles.botBubble]}>
         <Text style={[styles.msgText, isUser ? styles.userText : styles.botText]}>{text}</Text>
       </View>
@@ -36,10 +34,9 @@ function ChatMessage({ role, text }) {
 }
 
 export default function FloatingChat({ isDark = false, pageContext = null }) {
+  const { sendChatMessage } = useApp();
   const [visible, setVisible] = useState(false);
-  const [messages, setMessages] = useState([
-    { id: '0', role: 'bot', text: 'Hi Alex! How can I help you today?' }
-  ]);
+  const [messages, setMessages] = useState([{ id: '0', role: 'bot', text: 'Hi Alex! What would you like to understand better?' }]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -48,41 +45,51 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
 
   const handleOpen = () => {
     Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 0.9, duration: 80, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.92, duration: 80, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }),
     ]).start();
     setVisible(true);
   };
 
-  const sendMessage = useCallback((text = input.trim()) => {
-    if (!text) return;
-    const newMsg = { id: Date.now().toString(), role: 'user', text };
-    setMessages(prev => [...prev, newMsg]);
+  const handleSend = useCallback(async (rawText = input.trim()) => {
+    if (!rawText) {
+      return;
+    }
+
+    const userMessage = { id: `${Date.now()}`, role: 'user', text: rawText };
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsTyping(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
 
-    setTimeout(() => {
-      const reply = getAIReply(text, pageContext);
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'bot', text: reply }]);
+    try {
+      const reply = await sendChatMessage(rawText, pageContext);
+      const citationLine = reply.citations?.length ? `\n\nSources: ${reply.citations.join(' | ')}` : '';
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-reply`,
+          role: 'bot',
+          text: `${reply.answer}${citationLine}`,
+        },
+      ]);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-reply`,
+          role: 'bot',
+          text: error.message || 'The assistant is temporarily unavailable.',
+        },
+      ]);
+    } finally {
       setIsTyping(false);
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 1200);
-
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [input, pageContext]);
-
-  const getAIReply = (question, ctx) => {
-    const q = question.toLowerCase();
-    if (q.includes('rag')) return 'RAG (Retrieval-Augmented Generation) combines a retriever and a generator. The retriever finds relevant documents from a knowledge base, then feeds them as context to the LLM so it can answer accurately. Great for keeping answers grounded in real data!';
-    if (q.includes('fine-tun')) return 'Fine-tuning bakes knowledge into model weights — great for style and format. RAG retrieves knowledge at runtime — better for fresh or private data. Most production systems use RAG for factual accuracy.';
-    if (q.includes('build') || q.includes('agent')) return 'To build a RAG agent: 1) Chunk your documents, 2) Embed them with an embedding model, 3) Store in a vector DB (Pinecone, Qdrant, Chroma), 4) At query time, embed the question, retrieve top-k chunks, 5) Pass chunks as context to your LLM. LlamaIndex makes this easy!';
-    if (q.includes('tool')) return 'Top RAG tools: LlamaIndex (best for RAG pipelines), LangChain (flexible chains), Haystack (production-ready), and Chroma/Pinecone for vector storage. LlamaIndex is my top pick for getting started quickly.';
-    return `Great question about "${question}"! For the current topic of RAG Agents, this relates to how retrieval systems augment LLM capabilities. Would you like me to explain a specific aspect in more detail?`;
-  };
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+    }
+  }, [input, pageContext, sendChatMessage]);
 
   return (
     <>
-      {/* Floating Button */}
       <Animated.View style={[styles.fabContainer, { transform: [{ scale: scaleAnim }], bottom: 90 + insets.bottom }]}>
         <TouchableOpacity onPress={handleOpen} style={[styles.fab, isDark ? styles.fabDark : styles.fabLight]}>
           <View style={styles.fabInner}>
@@ -92,42 +99,36 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Chat Modal */}
-      <Modal
-        visible={visible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setVisible(false)}
-      >
+      <Modal visible={visible} animationType="slide" transparent onRequestClose={() => setVisible(false)}>
         <Pressable style={styles.backdrop} onPress={() => setVisible(false)} />
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.kvAware}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.kvAware}>
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
-            {/* Header */}
             <View style={styles.sheetHeader}>
               <View style={styles.sheetTitleRow}>
                 <View style={styles.sheetIcon}>
                   <Ionicons name="hardware-chip-outline" size={16} color="#2563EB" />
                 </View>
-                <Text style={styles.sheetTitle}>Ask AI</Text>
+                <View>
+                  <Text style={styles.sheetTitle}>Ask AI</Text>
+                  <Text style={styles.sheetSubtitle}>{pageContext?.type ? `Context: ${pageContext.type}` : 'Context-aware assistant'}</Text>
+                </View>
               </View>
               <TouchableOpacity onPress={() => setVisible(false)} style={styles.closeBtn}>
                 <Ionicons name="close" size={20} color="#475569" />
               </TouchableOpacity>
             </View>
 
-            {/* Messages */}
             <ScrollView
               ref={scrollRef}
               style={styles.messages}
-              contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 16, gap: 12 }}
+              contentContainerStyle={styles.messagesContent}
               showsVerticalScrollIndicator={false}
             >
-              {messages.map(m => <ChatMessage key={m.id} role={m.role} text={m.text} />)}
-              {isTyping && (
-                <View style={[styles.msgRow, { justifyContent: 'flex-start' }]}>
+              {messages.map((message) => (
+                <ChatMessage key={message.id} role={message.role} text={message.text} />
+              ))}
+              {isTyping ? (
+                <View style={[styles.msgRow, styles.botRow]}>
                   <View style={styles.botAvatar}>
                     <Ionicons name="hardware-chip-outline" size={14} color="#2563EB" />
                   </View>
@@ -135,26 +136,19 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
                     <Text style={[styles.msgText, styles.botText]}>Thinking...</Text>
                   </View>
                 </View>
-              )}
+              ) : null}
             </ScrollView>
 
-            {/* Suggestions */}
-            {messages.length <= 1 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.suggestScroll}
-                contentContainerStyle={styles.suggestContainer}
-              >
-                {CHAT_SUGGESTIONS.map(s => (
-                  <TouchableOpacity key={s.id} onPress={() => sendMessage(s.text)} style={styles.suggestChip}>
-                    <Text style={styles.suggestText}>{s.text}</Text>
+            {messages.length <= 1 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestScroll} contentContainerStyle={styles.suggestContainer}>
+                {CHAT_SUGGESTIONS.map((suggestion) => (
+                  <TouchableOpacity key={suggestion.id} onPress={() => handleSend(suggestion.text)} style={styles.suggestChip}>
+                    <Text style={styles.suggestText}>{suggestion.text}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            )}
+            ) : null}
 
-            {/* Input */}
             <View style={styles.inputRow}>
               <TextInput
                 value={input}
@@ -162,15 +156,10 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
                 placeholder="Ask anything..."
                 placeholderTextColor="#94A3B8"
                 style={styles.input}
-                onSubmitEditing={() => sendMessage()}
+                onSubmitEditing={() => handleSend()}
                 returnKeyType="send"
-                multiline={false}
               />
-              <TouchableOpacity
-                onPress={() => sendMessage()}
-                style={[styles.sendBtn, !input.trim() && { opacity: 0.4 }]}
-                disabled={!input.trim()}
-              >
+              <TouchableOpacity onPress={() => handleSend()} style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]} disabled={!input.trim()}>
                 <Ionicons name="arrow-up" size={18} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
@@ -233,7 +222,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: 520,
+    maxHeight: 540,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.12,
@@ -268,6 +257,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
   },
+  sheetSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 1,
+  },
   closeBtn: {
     width: 32,
     height: 32,
@@ -277,13 +271,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   messages: {
-    maxHeight: 240,
+    maxHeight: 260,
+  },
+  messagesContent: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
   },
   msgRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
     marginBottom: 4,
+  },
+  userRow: {
+    justifyContent: 'flex-end',
+  },
+  botRow: {
+    justifyContent: 'flex-start',
   },
   botAvatar: {
     width: 28,
@@ -318,7 +323,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   suggestScroll: {
-    maxHeight: 44,
+    maxHeight: 48,
   },
   suggestContainer: {
     paddingHorizontal: 16,
@@ -364,5 +369,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sendBtnDisabled: {
+    opacity: 0.4,
   },
 });

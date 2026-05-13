@@ -1,156 +1,101 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-} from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import FloatingChat from '../components/FloatingChat';
-import { NEWS_ITEMS } from '../constants/mockData';
-import { LIGHT, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { useApp } from '../context/AppProvider';
+import { DARK, LIGHT, RADIUS, SPACING } from '../constants/theme';
 
-const C = LIGHT;
-const { width } = Dimensions.get('window');
+const TABS = [
+  { label: 'Latest', value: 'news' },
+  { label: 'Research', value: 'papers' },
+  { label: 'Tools', value: 'tools' },
+];
 
-const TAB_LABELS = ['Latest', 'Research', 'Papers'];
-
-function ImagePlaceholder({ gradientColors, style }) {
-  return (
-    <LinearGradient colors={gradientColors} style={style} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-      <Ionicons name="image-outline" size={20} color="rgba(255,255,255,0.3)" />
-    </LinearGradient>
-  );
+function usePalette(themeMode) {
+  return themeMode === 'dark' ? DARK : LIGHT;
 }
 
-function NewsCard({ item, onPress }) {
-  const [saved, setSaved] = useState(item.saved);
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.newsCard} activeOpacity={0.85}>
-      {/* Thumbnail */}
-      <ImagePlaceholder
-        gradientColors={item.imageGradient}
-        style={styles.thumbnail}
-      />
-      {/* Content */}
-      <View style={styles.newsContent}>
-        <View style={styles.categoryRow}>
-          <View style={[styles.categoryBadge, { backgroundColor: item.categoryColor + '18' }]}>
-            <Text style={[styles.categoryText, { color: item.categoryColor }]}>{item.category}</Text>
-          </View>
-        </View>
-        <Text style={styles.newsTitle} numberOfLines={2}>{item.title}</Text>
-        <Text style={styles.newsTime}>{item.time}</Text>
-      </View>
-      {/* Bookmark */}
-      <TouchableOpacity onPress={() => setSaved(!saved)} style={styles.bookmarkBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={saved ? C.primary : C.textMuted} />
-      </TouchableOpacity>
-    </TouchableOpacity>
-  );
-}
+export default function NewsScreen() {
+  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems } = useApp();
+  const colors = usePalette(themeMode);
+  const [activeTab, setActiveTab] = useState(feedType);
 
-function FeaturedCard({ item, onPress }) {
-  const [saved, setSaved] = useState(item.saved);
-  return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.featuredCard, C.cardShadow]}>
-      <ImagePlaceholder
-        gradientColors={item.imageGradient}
-        style={styles.featuredImage}
-      />
-      <View style={styles.featuredContent}>
-        <View style={[styles.categoryBadge, { backgroundColor: item.categoryColor + '18', alignSelf: 'flex-start', marginBottom: 8 }]}>
-          <Text style={[styles.categoryText, { color: item.categoryColor }]}>{item.category}</Text>
-        </View>
-        <Text style={[styles.newsTitle, { fontSize: 18, fontWeight: '800' }]} numberOfLines={2}>{item.title}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-          <Text style={styles.newsTime}>{item.time}</Text>
-          <TouchableOpacity onPress={() => setSaved(!saved)}>
-            <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={20} color={saved ? C.primary : C.textMuted} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-}
+  useEffect(() => {
+    refreshFeed(activeTab);
+  }, [activeTab]);
 
-export default function NewsScreen({ navigation }) {
-  const [activeTab, setActiveTab] = useState(0);
-  const [searchVisible, setSearchVisible] = useState(false);
-
-  const filteredItems = activeTab === 0
-    ? NEWS_ITEMS
-    : activeTab === 1
-    ? NEWS_ITEMS.filter(n => n.category === 'Research')
-    : NEWS_ITEMS.filter(n => n.category === 'Papers');
-
-  const [featured, ...rest] = filteredItems;
+  const [featured, ...rest] = feed ?? [];
+  const savedIds = useMemo(() => new Set(savedItems.map((item) => item.id)), [savedItems]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top']}>
-      <StatusBar style="dark" />
-
-      {/* Header */}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>News</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity onPress={() => setSearchVisible(!searchVisible)} style={styles.iconBtn}>
-            <Ionicons name="search-outline" size={22} color={C.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Ionicons name="options-outline" size={22} color={C.text} />
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>News</Text>
+        <TouchableOpacity style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="refresh-outline" size={22} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
-      {/* Search bar (expandable) */}
-      {searchVisible && (
-        <View style={styles.searchBarContainer}>
-          <Ionicons name="search-outline" size={18} color={C.textMuted} />
-          <Text style={styles.searchPlaceholder}>Search AI news...</Text>
-        </View>
-      )}
-
-      {/* Tabs */}
       <View style={styles.tabsRow}>
-        {TAB_LABELS.map((tab, idx) => (
+        {TABS.map((tab) => (
           <TouchableOpacity
-            key={tab}
-            onPress={() => setActiveTab(idx)}
-            style={[styles.tabPill, activeTab === idx && styles.tabPillActive]}
+            key={tab.value}
+            onPress={() => setActiveTab(tab.value)}
+            style={[styles.tabPill, { backgroundColor: colors.surface, borderColor: colors.border }, activeTab === tab.value && { backgroundColor: colors.primary, borderColor: colors.primary }]}
           >
-            <Text style={[styles.tabText, activeTab === idx && styles.tabTextActive]}>{tab}</Text>
+            <Text style={[styles.tabText, { color: activeTab === tab.value ? '#FFFFFF' : colors.textSub }]}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {featured ? (
+          <TouchableOpacity activeOpacity={0.9} style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <LinearGradient colors={featured.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.featuredImage}>
+              <Ionicons name="sparkles-outline" size={22} color="rgba(255,255,255,0.8)" />
+            </LinearGradient>
+            <View style={styles.featuredContent}>
+              <View style={[styles.categoryBadge, { backgroundColor: `${featured.categoryColor ?? colors.primary}18` }]}>
+                <Text style={[styles.categoryText, { color: featured.categoryColor ?? colors.primary }]}>{featured.category}</Text>
+              </View>
+              <Text style={[styles.newsTitle, { color: colors.text, fontSize: 18 }]}>{featured.title}</Text>
+              <Text style={[styles.summaryText, { color: colors.textSub }]}>{featured.summary}</Text>
+              <View style={styles.featuredFooter}>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{featured.time || featured.sourceName}</Text>
+                <TouchableOpacity onPress={() => toggleBookmark(featured)}>
+                  <Ionicons name={savedIds.has(featured.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(featured.id) ? colors.primary : colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : null}
 
-        {/* Featured card */}
-        {featured && (
-          <FeaturedCard item={featured} onPress={() => {}} />
-        )}
-
-        {/* News list */}
         {rest.map((item) => (
-          <NewsCard key={item.id} item={item} onPress={() => {}} />
+          <View key={item.id} style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <LinearGradient colors={item.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.thumbnail}>
+              <Ionicons name="newspaper-outline" size={18} color="rgba(255,255,255,0.8)" />
+            </LinearGradient>
+            <View style={{ flex: 1 }}>
+              <View style={[styles.categoryBadge, { backgroundColor: `${item.categoryColor ?? colors.primary}18`, alignSelf: 'flex-start' }]}>
+                <Text style={[styles.categoryText, { color: item.categoryColor ?? colors.primary }]}>{item.category}</Text>
+              </View>
+              <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+              <Text style={[styles.summaryText, { color: colors.textSub }]} numberOfLines={2}>{item.summary}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.time || item.sourceName}</Text>
+            </View>
+            <TouchableOpacity onPress={() => toggleBookmark(item)}>
+              <Ionicons name={savedIds.has(item.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(item.id) ? colors.primary : colors.textMuted} />
+            </TouchableOpacity>
+          </View>
         ))}
-
-        {/* View all */}
-        <TouchableOpacity style={styles.viewAllBtn}>
-          <Text style={styles.viewAllText}>View all</Text>
-          <Ionicons name="chevron-forward" size={16} color={C.primary} />
-        </TouchableOpacity>
-
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <FloatingChat isDark={false} pageContext={{ type: 'news' }} />
+      <FloatingChat isDark={themeMode === 'dark'} pageContext={{ type: 'news' }} />
     </SafeAreaView>
   );
 }
@@ -162,40 +107,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.base,
     paddingVertical: 12,
-    backgroundColor: LIGHT.bg,
   },
   headerTitle: {
-    fontSize: FONTS.sizes.xxl,
+    fontSize: 28,
     fontWeight: '800',
-    color: LIGHT.text,
-    letterSpacing: -0.5,
   },
   iconBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: LIGHT.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: LIGHT.border,
-  },
-  searchBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginHorizontal: SPACING.base,
-    marginBottom: 10,
-    backgroundColor: LIGHT.surface,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: LIGHT.border,
-  },
-  searchPlaceholder: {
-    fontSize: 15,
-    color: LIGHT.textMuted,
   },
   tabsRow: {
     flexDirection: 'row',
@@ -207,32 +130,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 9,
     borderRadius: RADIUS.full,
-    backgroundColor: LIGHT.surface,
     borderWidth: 1.5,
-    borderColor: LIGHT.border,
-  },
-  tabPillActive: {
-    backgroundColor: LIGHT.primary,
-    borderColor: LIGHT.primary,
   },
   tabText: {
     fontSize: 14,
     fontWeight: '600',
-    color: LIGHT.textSub,
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
   },
   scrollContent: {
     paddingHorizontal: SPACING.base,
   },
   featuredCard: {
-    backgroundColor: LIGHT.surface,
     borderRadius: RADIUS.xl,
     overflow: 'hidden',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: LIGHT.border,
   },
   featuredImage: {
     width: '100%',
@@ -243,16 +154,20 @@ const styles = StyleSheet.create({
   featuredContent: {
     padding: 16,
   },
+  featuredFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
   newsCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: LIGHT.surface,
     borderRadius: RADIUS.lg,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: LIGHT.border,
   },
   thumbnail: {
     width: 76,
@@ -260,55 +175,26 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-  },
-  newsContent: {
-    flex: 1,
-    gap: 5,
-  },
-  categoryRow: {
-    flexDirection: 'row',
   },
   categoryBadge: {
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
+    marginBottom: 8,
   },
   categoryText: {
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.3,
   },
   newsTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: LIGHT.text,
     lineHeight: 21,
   },
-  newsTime: {
-    fontSize: 12,
-    color: LIGHT.textMuted,
-    fontWeight: '500',
-  },
-  bookmarkBtn: {
-    padding: 4,
-  },
-  viewAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 16,
-    backgroundColor: LIGHT.surface,
-    borderRadius: RADIUS.lg,
-    marginTop: 4,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: LIGHT.border,
-  },
-  viewAllText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: LIGHT.primary,
+  summaryText: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6,
+    marginBottom: 6,
   },
 });

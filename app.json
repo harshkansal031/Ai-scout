@@ -3,6 +3,7 @@
     "name": "AI Scout",
     "slug": "ai-scout",
     "version": "1.0.0",
+    "scheme": "aiscout",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -22,7 +23,14 @@
     "web": {
     },
     "plugins": [
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-notifications"
+    ],
+    "extra": {
+      "appEnv": "development",
+      "supabaseUrl": "",
+      "supabaseAnonKey": "",
+      "supabaseProjectId": ""
+    }
   }
 }

@@ -1,12 +1,5 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-} from 'react-native';
+import React from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,93 +7,45 @@ import { StatusBar } from 'expo-status-bar';
 import ProgressRing from '../components/ProgressRing';
 import WeekDots from '../components/WeekDots';
 import FloatingChat from '../components/FloatingChat';
-import { DAILY_TOPIC, PROGRESS, CONTINUE_LEARNING } from '../constants/mockData';
-import { LIGHT, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { useApp } from '../context/AppProvider';
+import { DARK, FONTS, LIGHT, RADIUS, SPACING } from '../constants/theme';
 
-const { width } = Dimensions.get('window');
-const C = LIGHT;
-
-function AIScoutLogo() {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      <View style={{
-        backgroundColor: C.primary,
-        borderRadius: 8,
-        paddingHorizontal: 7,
-        paddingVertical: 3,
-      }}>
-        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13, letterSpacing: -0.3 }}>AI</Text>
-      </View>
-      <Text style={{ fontSize: 18, fontWeight: '800', color: C.text, letterSpacing: -0.5 }}>Scout</Text>
-    </View>
-  );
+function usePalette(themeMode) {
+  return themeMode === 'dark' ? DARK : LIGHT;
 }
 
-function StreakBadge({ streak }) {
+function AIScoutLogo({ colors }) {
   return (
-    <View style={{
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      backgroundColor: '#FFF7ED',
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: RADIUS.full,
-      borderWidth: 1,
-      borderColor: '#FED7AA',
-    }}>
-      <Text style={{ fontSize: 14 }}>🔥</Text>
-      <Text style={{ fontSize: 12, fontWeight: '700', color: '#D97706' }}>{streak} day streak</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <View style={{ backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
+        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>AI</Text>
+      </View>
+      <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Scout</Text>
     </View>
   );
 }
 
 function TodayTopicCard({ topic, onPress }) {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.92} style={{ borderRadius: RADIUS.xl, overflow: 'hidden', ...C.cardShadow }}>
-      <LinearGradient
-        colors={['#2563EB', '#1E40AF', '#1D4ED8']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.topicCard}
-      >
-        {/* Background decoration */}
+    <TouchableOpacity onPress={onPress} activeOpacity={0.92} style={{ borderRadius: RADIUS.xl, overflow: 'hidden' }}>
+      <LinearGradient colors={['#2563EB', '#1E40AF', '#1D4ED8']} style={styles.topicCard}>
         <View style={styles.topicDecor1} />
         <View style={styles.topicDecor2} />
-
         <View style={styles.topicContent}>
-          <View>
-            <View style={{
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              borderRadius: RADIUS.full,
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-              alignSelf: 'flex-start',
-              marginBottom: 10,
-            }}>
-              <Text style={{ color: 'rgba(255,255,255,0.95)', fontSize: 12, fontWeight: '600' }}>Today's Topic</Text>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <View style={styles.topicPill}>
+              <Text style={styles.topicPillText}>Today's Topic</Text>
             </View>
-            <Text style={{ color: '#FFFFFF', fontSize: 28, fontWeight: '800', letterSpacing: -0.5, lineHeight: 34 }}>
-              {topic.title}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 }}>
-              <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.8)" />
-              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '500' }}>{topic.duration} min</Text>
+            <Text style={styles.topicTitle}>{topic?.title}</Text>
+            <View style={styles.topicMetaRow}>
+              <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.82)" />
+              <Text style={styles.topicMetaText}>{topic?.duration ?? 30} min</Text>
             </View>
           </View>
-
-          {/* AI Bot Illustration */}
-          <View style={styles.illustrationContainer}>
-            <View style={styles.illustrationBot}>
-              <View style={styles.botBody}>
-                <Ionicons name="hardware-chip" size={28} color="#2563EB" />
-              </View>
-              <View style={styles.botGlow} />
+          <View style={styles.botVisual}>
+            <View style={styles.botCircle}>
+              <Ionicons name="hardware-chip" size={28} color="#2563EB" />
             </View>
-            {/* Floating orbs */}
-            <View style={[styles.orb, { top: 0, right: 10, width: 12, height: 12, backgroundColor: 'rgba(255,255,255,0.3)' }]} />
-            <View style={[styles.orb, { top: 20, right: -5, width: 8, height: 8, backgroundColor: 'rgba(255,255,255,0.2)' }]} />
-            <View style={[styles.orb, { bottom: 5, right: 20, width: 10, height: 10, backgroundColor: 'rgba(255,255,255,0.25)' }]} />
           </View>
         </View>
       </LinearGradient>
@@ -108,171 +53,144 @@ function TodayTopicCard({ topic, onPress }) {
   );
 }
 
-function ContinueLearningCard({ item, onPress }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={[styles.continueCard, C.shadow]} activeOpacity={0.85}>
-      <View style={[styles.continueIcon, { backgroundColor: item.iconBg + '20' }]}>
-        <View style={[styles.continueIconInner, { backgroundColor: item.iconBg }]}>
-          <Text style={{ fontSize: 16 }}>{item.icon}</Text>
-        </View>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 3 }}>{item.title}</Text>
-        <Text style={{ fontSize: 12, color: C.textMuted, fontWeight: '500' }}>{item.timeLeft}</Text>
-        {/* Progress bar */}
-        <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${item.progress * 100}%`, backgroundColor: item.iconBg }]} />
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <TouchableOpacity style={[styles.botCircle, { borderColor: C.border }]}>
-          <Ionicons name="hardware-chip-outline" size={16} color={C.primary} />
-        </TouchableOpacity>
-        <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
-      </View>
-    </TouchableOpacity>
-  );
-}
-
 export default function TodayScreen({ navigation }) {
-  const [notifCount] = useState(2);
+  const { themeMode, todayTopic, progress, continueLearning, dataLoading, backendKind } = useApp();
+  const colors = usePalette(themeMode);
+
+  if (dataLoading && !todayTopic) {
+    return (
+      <SafeAreaView style={[styles.centered, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top']}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <AIScoutLogo />
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity style={styles.iconBtn}>
-            <Ionicons name="search-outline" size={22} color={C.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconBtn, { position: 'relative' }]}>
-            <Ionicons name="notifications-outline" size={22} color={C.text} />
-            {notifCount > 0 && (
-              <View style={styles.notifDot}>
-                <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '700' }}>{notifCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+      <View style={[styles.header, { backgroundColor: colors.bg }]}>
+        <AIScoutLogo colors={colors} />
+        <View style={styles.headerActions}>
+          <View style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="radio-outline" size={16} color={colors.primary} />
+          </View>
+          <View style={[styles.backendBadge, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.backendBadgeText, { color: colors.textSub }]}>
+              {backendKind === 'supabase' ? 'Live' : 'Local'}
+            </Text>
+          </View>
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Today Heading + Streak */}
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.todayRow}>
           <View>
-            <Text style={styles.todayTitle}>Today</Text>
-            <Text style={{ fontSize: 14, color: C.textSub, fontWeight: '400', marginTop: 2 }}>Your daily AI topic</Text>
+            <Text style={[styles.todayTitle, { color: colors.text }]}>Today</Text>
+            <Text style={{ fontSize: 14, color: colors.textSub, marginTop: 2 }}>Your daily AI topic</Text>
           </View>
-          <StreakBadge streak={PROGRESS.streak} />
+          <View style={styles.streakBadge}>
+            <Text style={{ fontSize: 14 }}>🔥</Text>
+            <Text style={styles.streakText}>{progress?.streak ?? 0} day streak</Text>
+          </View>
         </View>
 
-        {/* Today's Topic Card */}
-        <TodayTopicCard
-          topic={DAILY_TOPIC}
-          onPress={() => navigation.navigate('Lecture', { topic: DAILY_TOPIC })}
-        />
+        <TodayTopicCard topic={todayTopic} onPress={() => navigation.navigate('Lecture', { topic: todayTopic })} />
 
-        {/* Start Lesson Button */}
-        <TouchableOpacity
-          style={styles.startBtn}
-          onPress={() => navigation.navigate('Lecture', { topic: DAILY_TOPIC })}
-          activeOpacity={0.88}
-        >
-          <LinearGradient
-            colors={[C.primary, C.primaryDark]}
-            style={styles.startBtnGrad}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
+        <TouchableOpacity style={styles.startBtn} onPress={() => navigation.navigate('Lecture', { topic: todayTopic })} activeOpacity={0.88}>
+          <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.startBtnGrad}>
             <Text style={styles.startBtnText}>Start Lesson</Text>
             <Ionicons name="play" size={16} color="#FFF" style={{ marginLeft: 6 }} />
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Progress Section */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your progress</Text>
-          <TouchableOpacity>
-            <Text style={{ fontSize: 14, color: C.primary, fontWeight: '600' }}>View all</Text>
-          </TouchableOpacity>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your progress</Text>
         </View>
 
-        <View style={[styles.progressCard, C.shadow]}>
-          <ProgressRing
-            percent={PROGRESS.weeklyPercent}
-            size={88}
-            strokeWidth={9}
-            color={C.primary}
-            bgColor={C.border}
-            textColor={C.text}
-          />
+        <View style={[styles.progressCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <ProgressRing percent={progress?.weeklyPercent ?? 0} size={88} strokeWidth={9} color={colors.primary} bgColor={colors.border} textColor={colors.text} />
           <View style={{ flex: 1, paddingLeft: 16 }}>
-            <Text style={{ fontSize: 11, color: C.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>This week</Text>
-            <Text style={{ fontSize: 20, fontWeight: '800', color: C.text, marginTop: 4 }}>
-              {PROGRESS.topicsCompleted} <Text style={{ fontSize: 14, color: C.textSub, fontWeight: '500' }}>of {PROGRESS.topicsTotal} topics</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase' }}>This week</Text>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, marginTop: 4 }}>
+              {progress?.topicsCompleted ?? 0}{' '}
+              <Text style={{ fontSize: 14, color: colors.textSub, fontWeight: '500' }}>
+                of {progress?.topicsTotal ?? 0} topics
+              </Text>
             </Text>
-            <WeekDots days={PROGRESS.weekDays} activeColor={C.primary} inactiveColor={C.border} textColor={C.textMuted} />
+            <WeekDots days={progress?.weekDays ?? []} activeColor={colors.primary} inactiveColor={colors.border} textColor={colors.textMuted} />
           </View>
         </View>
 
-        {/* Continue Learning */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Continue learning</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Continue learning</Text>
         </View>
 
-        {CONTINUE_LEARNING.map((item) => (
-          <ContinueLearningCard
+        {continueLearning?.map((item) => (
+          <TouchableOpacity
             key={item.id}
-            item={item}
-            onPress={() => navigation.navigate('Lecture', { topic: { ...DAILY_TOPIC, title: item.title, id: item.id } })}
-          />
+            onPress={() => navigation.navigate('Lecture', { topic: { ...todayTopic, title: item.title, id: item.id } })}
+            style={[styles.continueCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            <View style={[styles.continueIcon, { backgroundColor: `${item.iconBg}20` }]}>
+              <View style={[styles.continueIconInner, { backgroundColor: item.iconBg }]}>
+                <Text style={{ fontSize: 16 }}>{item.icon}</Text>
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{item.title}</Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 3 }}>{item.timeLeft}</Text>
+              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                <View style={[styles.progressFill, { width: `${(item.progress ?? 0) * 100}%`, backgroundColor: item.iconBg }]} />
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
         ))}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <FloatingChat isDark={false} pageContext={{ type: 'today', topic: DAILY_TOPIC }} />
+      <FloatingChat isDark={themeMode === 'dark'} pageContext={{ type: 'today', topic: todayTopic }} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  centered: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.base,
     paddingVertical: 12,
-    backgroundColor: LIGHT.bg,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   iconBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: LIGHT.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: LIGHT.border,
   },
-  notifDot: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: LIGHT.bg,
+  backendBadge: {
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  backendBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   scrollContent: {
     paddingHorizontal: SPACING.base,
@@ -287,8 +205,22 @@ const styles = StyleSheet.create({
   todayTitle: {
     fontSize: FONTS.sizes.xxl,
     fontWeight: '800',
-    color: LIGHT.text,
-    letterSpacing: -0.5,
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF7ED',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  streakText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#D97706',
   },
   topicCard: {
     borderRadius: RADIUS.xl,
@@ -319,51 +251,54 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  illustrationContainer: {
+  topicPill: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  topicPillText: {
+    color: 'rgba(255,255,255,0.95)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  topicTitle: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 34,
+  },
+  topicMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 8,
+  },
+  topicMetaText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  botVisual: {
     width: 80,
     height: 90,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  illustrationBot: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  botBody: {
+  botCircle: {
     width: 60,
     height: 60,
     borderRadius: 30,
     backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  botGlow: {
-    position: 'absolute',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  orb: {
-    position: 'absolute',
-    borderRadius: 100,
   },
   startBtn: {
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
     marginBottom: 24,
-    shadowColor: LIGHT.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
   },
   startBtnGrad: {
     paddingVertical: 16,
@@ -375,7 +310,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 17,
     fontWeight: '700',
-    letterSpacing: -0.2,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -386,21 +320,16 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: LIGHT.text,
-    letterSpacing: -0.3,
   },
   progressCard: {
-    backgroundColor: LIGHT.surface,
     borderRadius: RADIUS.lg,
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: LIGHT.border,
   },
   continueCard: {
-    backgroundColor: LIGHT.surface,
     borderRadius: RADIUS.lg,
     padding: 16,
     flexDirection: 'row',
@@ -408,7 +337,6 @@ const styles = StyleSheet.create({
     gap: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: LIGHT.border,
   },
   continueIcon: {
     width: 52,
@@ -426,7 +354,6 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: 4,
-    backgroundColor: LIGHT.border,
     borderRadius: 2,
     marginTop: 6,
     overflow: 'hidden',
@@ -434,14 +361,5 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 2,
-  },
-  botCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: LIGHT.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
   },
 });
