@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,9 +9,10 @@ import { useApp } from '../context/AppProvider';
 import { DARK, LIGHT, RADIUS, SPACING } from '../constants/theme';
 
 const TABS = [
-  { label: 'Latest', value: 'news' },
-  { label: 'Research', value: 'papers' },
-  { label: 'Tools', value: 'tools' },
+  { label: 'Latest', value: 'all' },
+  { label: '🚀 Launches', value: 'launches' },
+  { label: '📊 Industry', value: 'industry' },
+  { label: '🔬 Research', value: 'research' },
 ];
 
 function usePalette(themeMode) {
@@ -40,21 +41,27 @@ export default function NewsScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabsRow}>
-        {TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.value}
-            onPress={() => setActiveTab(tab.value)}
-            style={[styles.tabPill, { backgroundColor: colors.surface, borderColor: colors.border }, activeTab === tab.value && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-          >
-            <Text style={[styles.tabText, { color: activeTab === tab.value ? '#FFFFFF' : colors.textSub }]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
+      <View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow}>
+          {TABS.map((tab) => (
+            <TouchableOpacity
+              key={tab.value}
+              onPress={() => setActiveTab(tab.value)}
+              style={[styles.tabPill, { backgroundColor: colors.surface, borderColor: colors.border }, activeTab === tab.value && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            >
+              <Text style={[styles.tabText, { color: activeTab === tab.value ? '#FFFFFF' : colors.textSub }]}>{tab.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {featured ? (
-          <TouchableOpacity activeOpacity={0.9} style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => featured.sourceUrl && Linking.openURL(featured.sourceUrl)}
+            style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
             <LinearGradient colors={featured.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.featuredImage}>
               <Ionicons name="sparkles-outline" size={22} color="rgba(255,255,255,0.8)" />
             </LinearGradient>
@@ -75,7 +82,12 @@ export default function NewsScreen() {
         ) : null}
 
         {rest.map((item) => (
-          <View key={item.id} style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <TouchableOpacity
+            key={item.id}
+            activeOpacity={0.7}
+            onPress={() => item.sourceUrl && Linking.openURL(item.sourceUrl)}
+            style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
             <LinearGradient colors={item.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.thumbnail}>
               <Ionicons name="newspaper-outline" size={18} color="rgba(255,255,255,0.8)" />
             </LinearGradient>
@@ -90,7 +102,7 @@ export default function NewsScreen() {
             <TouchableOpacity onPress={() => toggleBookmark(item)}>
               <Ionicons name={savedIds.has(item.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(item.id) ? colors.primary : colors.textMuted} />
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         ))}
         <View style={{ height: 100 }} />
       </ScrollView>

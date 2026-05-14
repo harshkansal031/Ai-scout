@@ -182,11 +182,17 @@ export const supabaseBackend = {
       .order('published_at', { ascending: false })
       .limit(50);
 
-    if (type === 'papers') {
+    if (type === 'launches') {
+      query.contains('tags', ['launches']);
+    } else if (type === 'industry') {
+      query.contains('tags', ['industry']);
+    } else if (type === 'research') {
+      query.contains('tags', ['research']);
+    } else if (type === 'papers') {
       query.in('type', ['paper', 'research']);
     } else if (type === 'tools') {
       query.eq('type', 'tool');
-    } else {
+    } else if (type !== 'all') {
       query.in('type', ['news', 'research', 'paper']);
     }
 

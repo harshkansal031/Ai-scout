@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -91,7 +90,12 @@ export default function ExploreScreen({ navigation }) {
         {showPapers ? (
           <Section title="Papers" colors={colors}>
             {exploreResults.papers.map((paper) => (
-              <View key={paper.id} style={[styles.paperCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TouchableOpacity
+                key={paper.id}
+                activeOpacity={0.7}
+                onPress={() => paper.sourceUrl && Linking.openURL(paper.sourceUrl)}
+                style={[styles.paperCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
                 <View style={styles.arxivBadge}>
                   <Text style={styles.arxivText}>Paper</Text>
                 </View>
@@ -102,7 +106,7 @@ export default function ExploreScreen({ navigation }) {
                 <TouchableOpacity onPress={() => toggleBookmark(paper)}>
                   <Ionicons name={savedIds.has(paper.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(paper.id) ? colors.primary : colors.textMuted} />
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </Section>
         ) : null}
@@ -110,7 +114,12 @@ export default function ExploreScreen({ navigation }) {
         {showResources ? (
           <Section title="Resources" colors={colors}>
             {exploreResults.resources.map((resource) => (
-              <View key={resource.id} style={[styles.paperCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TouchableOpacity
+                key={resource.id}
+                activeOpacity={0.7}
+                onPress={() => resource.sourceUrl && Linking.openURL(resource.sourceUrl)}
+                style={[styles.paperCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
                 <View style={[styles.topicIconContainer, { backgroundColor: colors.warningLight }]}>
                   <Ionicons name="library-outline" size={18} color={colors.warning} />
                 </View>
@@ -118,7 +127,7 @@ export default function ExploreScreen({ navigation }) {
                   <Text style={[styles.paperTitle, { color: colors.text }]}>{resource.title}</Text>
                   <Text style={[styles.topicMeta, { color: colors.textMuted }]}>{resource.summary}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </Section>
         ) : null}
@@ -126,7 +135,12 @@ export default function ExploreScreen({ navigation }) {
         {showTools ? (
           <Section title="Tools" colors={colors}>
             {exploreResults.tools.map((tool) => (
-              <View key={tool.id} style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TouchableOpacity
+                key={tool.id}
+                activeOpacity={0.7}
+                onPress={() => tool.sourceUrl && Linking.openURL(tool.sourceUrl)}
+                style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
                 <View style={[styles.topicIconContainer, { backgroundColor: colors.primaryLight }]}>
                   <Ionicons name="construct-outline" size={20} color={colors.primary} />
                 </View>
@@ -137,7 +151,7 @@ export default function ExploreScreen({ navigation }) {
                 <TouchableOpacity onPress={() => toggleBookmark(tool)}>
                   <Ionicons name={savedIds.has(tool.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(tool.id) ? colors.primary : colors.textMuted} />
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             ))}
           </Section>
         ) : null}
