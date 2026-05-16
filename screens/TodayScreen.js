@@ -54,7 +54,7 @@ function TodayTopicCard({ topic, onPress }) {
 }
 
 export default function TodayScreen({ navigation }) {
-  const { themeMode, todayTopic, progress, continueLearning, dataLoading, backendKind } = useApp();
+  const { themeMode, todayTopic, progress, continueLearning, historyItems, dataLoading, backendKind } = useApp();
   const colors = usePalette(themeMode);
 
   if (dataLoading && !todayTopic) {
@@ -122,31 +122,61 @@ export default function TodayScreen({ navigation }) {
           </View>
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Continue learning</Text>
-        </View>
+        {continueLearning && continueLearning.length > 0 && (
+          <View style={{ marginBottom: 24 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Continue learning</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+              {continueLearning.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => navigation.navigate('Lecture', { topic: { ...todayTopic, title: item.title, id: item.id } })}
+                  style={[styles.squareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                >
+                  <View style={[styles.continueIcon, { backgroundColor: `${item.iconBg}20`, alignSelf: 'flex-start' }]}>
+                    <View style={[styles.continueIconInner, { backgroundColor: item.iconBg }]}>
+                      <Text style={{ fontSize: 16 }}>{item.icon}</Text>
+                    </View>
+                  </View>
+                  <View style={{ marginTop: 12, flex: 1, justifyContent: 'flex-end' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }} numberOfLines={2}>{item.title}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{item.timeLeft}</Text>
+                    <View style={[styles.progressBar, { backgroundColor: colors.border, marginTop: 8 }]}>
+                      <View style={[styles.progressFill, { width: `${(item.progress ?? 0) * 100}%`, backgroundColor: item.iconBg }]} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
-        {continueLearning?.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => navigation.navigate('Lecture', { topic: { ...todayTopic, title: item.title, id: item.id } })}
-            style={[styles.continueCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <View style={[styles.continueIcon, { backgroundColor: `${item.iconBg}20` }]}>
-              <View style={[styles.continueIconInner, { backgroundColor: item.iconBg }]}>
-                <Text style={{ fontSize: 16 }}>{item.icon}</Text>
-              </View>
+        {historyItems && historyItems.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Past topics</Text>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{item.title}</Text>
-              <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 3 }}>{item.timeLeft}</Text>
-              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
-                <View style={[styles.progressFill, { width: `${(item.progress ?? 0) * 100}%`, backgroundColor: item.iconBg }]} />
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        ))}
+            {historyItems.map((item) => (
+              <TouchableOpacity
+                key={item.id || item.history_id}
+                onPress={() => navigation.navigate('Lecture', { topic: { id: item.id, title: item.title } })}
+                style={[styles.continueCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <View style={[styles.continueIcon, { backgroundColor: `${colors.success}20` }]}>
+                  <View style={[styles.continueIconInner, { backgroundColor: colors.success }]}>
+                    <Ionicons name="checkmark-circle" size={24} color="#FFF" />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>{item.title}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 3 }}>Completed {item.completed_at}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -328,6 +358,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
     borderWidth: 1,
+  },
+  squareCard: {
+    width: 150,
+    height: 150,
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    borderWidth: 1,
+    justifyContent: 'space-between',
   },
   continueCard: {
     borderRadius: RADIUS.lg,

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -93,15 +93,20 @@ export default function LectureScreen({ route, navigation }) {
 
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Resources</Text>
             {resources.map((resource, index) => (
-              <View key={`${resource.title}-${index}`} style={[styles.resourceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <TouchableOpacity
+                key={`${resource.title}-${index}`}
+                activeOpacity={0.7}
+                onPress={() => resource.url && Linking.openURL(resource.url)}
+                style={[styles.resourceCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
                 <View style={[styles.resourceIcon, { backgroundColor: colors.primaryLight }]}>
                   <Ionicons name="link-outline" size={18} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{resource.title}</Text>
-                  <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{resource.time}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{resource.time || resource.duration_label || 'Link'}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </>
         ) : null}

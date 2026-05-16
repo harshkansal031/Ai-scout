@@ -34,6 +34,7 @@ export function AppProvider({ children }) {
     breakingNews: true,
     papers: true,
   });
+  const [localInterests, setLocalInterests] = useState([]);
 
   useEffect(() => {
     let mounted = true;
@@ -96,6 +97,17 @@ export function AppProvider({ children }) {
       setFeed(initialFeed);
       setFeedType('news');
       setExploreResults(EMPTY_EXPLORE);
+
+      // Fire off a background ingest to scrape platforms automatically on app open
+      if (backend.triggerIngestFeed) {
+        backend.triggerIngestFeed()
+          .then(() => backend.fetchFeed('news'))
+          .then((freshItems) => {
+             // We don't apply full sorting here to avoid jumping, but we update the feed
+             setFeed(prev => freshItems.length > 0 ? freshItems : prev);
+          })
+          .catch((err) => console.warn('Background ingest failed:', err.message));
+      }
 
       try {
         const token = await registerForPushNotificationsAsync();
@@ -167,11 +179,47 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function refreshFeed(type = feedType) {
+  async function refreshFeed(type = feedType, forceIngest = false) {
     setDataLoading(true);
     setError('');
     try {
+      if (forceIngest && backend.triggerIngestFeed) {
+        try {
+          await backend.triggerIngestFeed();
+        } catch (e) {
+          console.warn('Failed to trigger ingest:', e);
+        }
+      }
+      
       const items = await backend.fetchFeed(type);
+
+      const effectiveInterests = profile?.interests || localInterests;
+      if (effectiveInterests && effectiveInterests.length > 0) {
+        items.sort((a, b) => {
+          const aCat = a.category?.toLowerCase() || a.type?.toLowerCase();
+          const bCat = b.category?.toLowerCase() || b.type?.toLowerCase();
+          
+          let aScore = effectiveInterests.findIndex(i => {
+            const lowerI = i.toLowerCase();
+            return aCat === lowerI || a.title?.toLowerCase().includes(lowerI) || a.summary?.toLowerCase().includes(lowerI) || a.tags?.some(t => t.toLowerCase() === lowerI);
+          });
+          let bScore = effectiveInterests.findIndex(i => {
+            const lowerI = i.toLowerCase();
+            return bCat === lowerI || b.title?.toLowerCase().includes(lowerI) || b.summary?.toLowerCase().includes(lowerI) || b.tags?.some(t => t.toLowerCase() === lowerI);
+          });
+          
+          if (aScore === -1) aScore = 999;
+          if (bScore === -1) bScore = 999;
+          
+          // Secondary sort by date if scores are equal
+          if (aScore === bScore) {
+             return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
+          }
+          
+          return aScore - bScore;
+        });
+      }
+
       setFeed(items);
       setFeedType(type);
       return items;
@@ -186,6 +234,7 @@ export function AppProvider({ children }) {
   async function searchExplore(query) {
     setDataLoading(true);
     setError('');
+    trackSearch(query);
     try {
       const results = await backend.searchExplore(query);
       setExploreResults(results);
@@ -274,6 +323,40 @@ export function AppProvider({ children }) {
     return backend.sendChatMessage(session.user.id, { message, pageContext });
   }
 
+  async function trackItemClick(item) {
+    const category = item.category || item.type;
+    if (!category) return;
+    
+    const currentInterests = profile?.interests || localInterests;
+    const newInterests = [category, ...currentInterests.filter(c => c !== category)].slice(0, 10);
+    
+    if (newInterests.join(',') !== currentInterests.join(',')) {
+      if (profile) {
+        setProfile(prev => ({ ...prev, interests: newInterests }));
+        updateProfile({ interests: newInterests });
+      } else {
+        setLocalInterests(newInterests);
+      }
+    }
+  }
+
+  async function trackSearch(query) {
+    if (!query || query.trim().length === 0) return;
+    const term = query.toLowerCase().trim();
+    
+    const currentInterests = profile?.interests || localInterests;
+    const newInterests = [term, ...currentInterests.filter(c => c !== term)].slice(0, 10);
+    
+    if (newInterests.join(',') !== currentInterests.join(',')) {
+      if (profile) {
+        setProfile(prev => ({ ...prev, interests: newInterests }));
+        updateProfile({ interests: newInterests });
+      } else {
+        setLocalInterests(newInterests);
+      }
+    }
+  }
+
   const value = useMemo(
     () => ({
       backendKind: backend.kind,
@@ -304,6 +387,8 @@ export function AppProvider({ children }) {
       updateThemeMode,
       updateNotificationSettings,
       sendChatMessage,
+      trackItemClick,
+      trackSearch,
     }),
     [
       authLoading,
@@ -320,6 +405,7 @@ export function AppProvider({ children }) {
       session,
       todayTopic,
       continueLearning,
+      localInterests,
     ],
   );
 

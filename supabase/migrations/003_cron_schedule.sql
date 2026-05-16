@@ -22,3 +22,19 @@ select cron.schedule(
   );
   $$
 );
+
+-- Schedule generate-daily-topic to run every day at midnight (00:00)
+select cron.schedule(
+  'generate-daily-topic-midnight',
+  '0 0 * * *',
+  $$
+  select net.http_post(
+    url    := (select decrypted_secret from vault.decrypted_secrets where name = 'supabase_url') || '/functions/v1/generate-daily-topic',
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'supabase_service_role_key')
+    ),
+    body   := '{}'::jsonb
+  );
+  $$
+);

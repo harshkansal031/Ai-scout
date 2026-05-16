@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CHAT_SUGGESTIONS } from '../constants/mockData';
@@ -39,6 +40,7 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
   const [messages, setMessages] = useState([{ id: '0', role: 'bot', text: 'Hi Alex! What would you like to understand better?' }]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [useContext, setUseContext] = useState(!!pageContext);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef(null);
   const insets = useSafeAreaInsets();
@@ -63,7 +65,8 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
 
     try {
-      const reply = await sendChatMessage(rawText, pageContext);
+      const activeContext = useContext ? pageContext : null;
+      const reply = await sendChatMessage(rawText, activeContext);
       const citationLine = reply.citations?.length ? `\n\nSources: ${reply.citations.join(' | ')}` : '';
       setMessages((prev) => [
         ...prev,
@@ -108,9 +111,22 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
                 <View style={styles.sheetIcon}>
                   <Ionicons name="hardware-chip-outline" size={16} color="#2563EB" />
                 </View>
-                <View>
+                <View style={styles.titleTextWrapper}>
                   <Text style={styles.sheetTitle}>Ask AI</Text>
-                  <Text style={styles.sheetSubtitle}>{pageContext?.type ? `Context: ${pageContext.type}` : 'Context-aware assistant'}</Text>
+                  {pageContext ? (
+                    <View style={styles.contextToggleRow}>
+                      <Text style={styles.sheetSubtitle}>{pageContext.type === 'lecture' ? 'Topic Context' : `Context: ${pageContext.type}`}</Text>
+                      <Switch
+                        value={useContext}
+                        onValueChange={setUseContext}
+                        style={{ transform: [{ scaleX: 0.6 }, { scaleY: 0.6 }] }}
+                        trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
+                        thumbColor={useContext ? '#2563EB' : '#F8FAFC'}
+                      />
+                    </View>
+                  ) : (
+                    <Text style={styles.sheetSubtitle}>General assistant</Text>
+                  )}
                 </View>
               </View>
               <TouchableOpacity onPress={() => setVisible(false)} style={styles.closeBtn}>
@@ -257,10 +273,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
   },
+  titleTextWrapper: {
+    flexDirection: 'column',
+  },
+  contextToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: -2,
+    marginLeft: -4,
+  },
   sheetSubtitle: {
     fontSize: 12,
     color: '#64748B',
-    marginTop: 1,
+    marginLeft: 4,
   },
   closeBtn: {
     width: 32,

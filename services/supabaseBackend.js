@@ -204,18 +204,46 @@ export const supabaseBackend = {
     return (data ?? []).map(normalizeContentItem);
   },
 
-  async searchExplore(query) {
+  async triggerIngestFeed() {
     const supabase = getClient();
-    const { data, error } = await supabase.functions.invoke(EXPLORE_FUNCTION, {
-      body: { query },
+    const { data, error } = await supabase.functions.invoke('ingest-feed', {
+      method: 'POST',
     });
     if (error) {
       throw error;
     }
+    return data;
+  },
+
+  async searchExplore(query) {
+    const supabase = getClient();
+    
+    // Instead of calling an Edge Function, query the DB directly
+    const [contentResult, topicResult] = await Promise.all([
+      supabase
+        .from('content_items')
+        .select('*')
+        .or(`title.ilike.%${query}%,summary.ilike.%${query}%,source_name.ilike.%${query}%`)
+        .order('published_at', { ascending: false })
+        .limit(20),
+      supabase
+        .from('daily_topics')
+        .select('*')
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .limit(10),
+    ]);
+
+    if (contentResult.error) throw contentResult.error;
+    if (topicResult.error) throw topicResult.error;
+
+    const items = [
+      ...(topicResult.data ?? []).map((topic) => ({ ...topic, type: 'topic' })),
+      ...(contentResult.data ?? []),
+    ];
 
     return {
       query,
-      ...groupExploreResults(data?.items ?? []),
+      ...groupExploreResults(items),
     };
   },
 

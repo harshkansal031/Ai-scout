@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +20,7 @@ function usePalette(themeMode) {
 }
 
 export default function NewsScreen() {
-  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems } = useApp();
+  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems, trackItemClick, dataLoading } = useApp();
   const colors = usePalette(themeMode);
   const [activeTab, setActiveTab] = useState(feedType);
 
@@ -36,8 +36,12 @@ export default function NewsScreen() {
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>News</Text>
-        <TouchableOpacity style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name="refresh-outline" size={22} color={colors.text} />
+        <TouchableOpacity style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => refreshFeed(activeTab, true)} disabled={dataLoading}>
+          {dataLoading ? (
+            <ActivityIndicator size="small" color={colors.text} />
+          ) : (
+            <Ionicons name="refresh-outline" size={22} color={colors.text} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -59,7 +63,12 @@ export default function NewsScreen() {
         {featured ? (
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => featured.sourceUrl && Linking.openURL(featured.sourceUrl)}
+            onPress={() => {
+              if (featured.sourceUrl) {
+                trackItemClick(featured);
+                Linking.openURL(featured.sourceUrl);
+              }
+            }}
             style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <LinearGradient colors={featured.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.featuredImage}>
@@ -85,7 +94,12 @@ export default function NewsScreen() {
           <TouchableOpacity
             key={item.id}
             activeOpacity={0.7}
-            onPress={() => item.sourceUrl && Linking.openURL(item.sourceUrl)}
+            onPress={() => {
+              if (item.sourceUrl) {
+                trackItemClick(item);
+                Linking.openURL(item.sourceUrl);
+              }
+            }}
             style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
           >
             <LinearGradient colors={item.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.thumbnail}>

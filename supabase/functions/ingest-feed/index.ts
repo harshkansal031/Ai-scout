@@ -191,6 +191,51 @@ async function fetchArxiv(): Promise<FeedItem[]> {
   }
 }
 
+// ── Hacker News ──────────────────────────────────────────────────────────────
+async function fetchHackerNews(): Promise<FeedItem[]> {
+  try {
+    const topUrl = 'https://hacker-news.firebaseio.com/v0/topstories.json';
+    const topRes = await fetch(topUrl, { signal: AbortSignal.timeout(8000) });
+    const topIds: number[] = await topRes.json();
+    
+    // Fetch top 50 to find high impact stories
+    const items = await Promise.all(
+      topIds.slice(0, 50).map(async (id) => {
+        try {
+          const itemRes = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, { signal: AbortSignal.timeout(5000) });
+          return await itemRes.json();
+        } catch {
+          return null;
+        }
+      })
+    );
+    
+    // Score > 100 for big news to ensure we don't return empty results on slow days
+    const highImpact = items.filter(item => item && item.score && item.score > 100 && item.url);
+    
+    return highImpact.map(item => {
+      const summary = `Trending on Hacker News with ${item.score} points. ${item.title}`;
+      const tags = Array.from(new Set(['news', ...getSmartTags(item.title, summary, [])]));
+      
+      return {
+        id: `hn-${item.id}`,
+        type: 'news',
+        title: item.title,
+        summary: summary,
+        source_name: 'Hacker News',
+        source_url: item.url,
+        canonical_url: item.url,
+        published_at: new Date(item.time * 1000).toISOString(),
+        external_id: String(item.id),
+        tags,
+        metadata: { ingested_at: new Date().toISOString(), score: item.score },
+      };
+    });
+  } catch (e) {
+    return [];
+  }
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -203,14 +248,16 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Fetch all RSS sources + arXiv in parallel
-    const [arxivItems, ...rssResults] = await Promise.all([
+    // Fetch all RSS sources + arXiv + Hacker News in parallel
+    const [arxivItems, hnItems, ...rssResults] = await Promise.all([
       fetchArxiv(),
+      fetchHackerNews(),
       ...RSS_SOURCES.map((src) => fetchRssFeed(src.url, src.name, src.type, src.tags)),
     ]);
 
     const allItems = [
       ...arxivItems,
+      ...hnItems,
       ...rssResults.flat(),
     ];
 
@@ -260,7 +307,7 @@ Deno.serve(async (req) => {
     if (error) throw error;
 
     // Build per-source breakdown
-    const breakdown: Record<string, number> = { arxiv: arxivItems.length };
+    const breakdown: Record<string, number> = { arxiv: arxivItems.length, hacker_news: hnItems.length };
     RSS_SOURCES.forEach((src, i) => {
       breakdown[src.name] = rssResults[i]?.length ?? 0;
     });
