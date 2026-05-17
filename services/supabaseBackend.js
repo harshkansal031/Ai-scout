@@ -429,6 +429,49 @@ export const supabaseBackend = {
     return token;
   },
 
+  /**
+   * Search explore_topics corpus + content_items from our DB.
+   * Returns { topics: ExploreTopicRow[], items: ContentItem[] }
+   * Zero live external API calls — everything comes from Supabase.
+   */
+  async searchExploreContent(query) {
+    const supabase = getClient();
+    const { data, error } = await supabase.functions.invoke(EXPLORE_FUNCTION, {
+      body: { query },
+    });
+    if (error) throw error;
+    const { topics = [], items = [] } = data ?? {};
+    return {
+      topics,
+      items: items.map((item) => normalizeContentItem(item)).filter(Boolean),
+    };
+  },
+
+  /**
+   * Fetch dynamic content (articles/papers/posts) stored in topic_content
+   * for a specific explore_topics entry.
+   */
+  async fetchTopicContent(topicId) {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from('topic_content')
+      .select('*')
+      .eq('topic_id', topicId)
+      .eq('is_staging', false)
+      .order('published_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    return (data ?? []).map((item) =>
+      normalizeContentItem({
+        ...item,
+        source_url: item.source_url,
+        source_name: item.source_name,
+        category: item.category,
+        categoryColor: item.category_color,
+      })
+    ).filter(Boolean);
+  },
+
   async sendChatMessage(userId, { message, pageContext }) {
     const supabase = getClient();
     const { data, error } = await supabase.functions.invoke(CHAT_FUNCTION, {

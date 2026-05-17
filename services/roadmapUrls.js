@@ -1,31 +1,25 @@
-export function toYouTubeSearchUrl(query) {
-  const trimmed = String(query ?? '').trim();
-  if (!trimmed) {
-    return 'https://www.youtube.com/results?search_query=AI+tutorial';
+export function isValidHttpUrl(url) {
+  try {
+    const u = new URL(String(url ?? ''));
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
   }
-  const encoded = encodeURIComponent(trimmed).replace(/%20/g, '+');
-  return `https://www.youtube.com/results?search_query=${encoded}`;
 }
 
-export function isHallucinatedYouTubeUrl(url) {
-  const lower = String(url).toLowerCase();
-  return lower.includes('youtube.com/watch') || lower.includes('youtu.be/');
+export function isYouTubeUrl(url) {
+  const lower = String(url ?? '').toLowerCase();
+  return lower.includes('youtube.com') || lower.includes('youtu.be');
 }
 
-export function sanitizeStepResource(step, roadmapTitle) {
+export function sanitizeStepResource(step) {
   const resource = step.resource?.trim() ?? '';
-  const searchQuery = `${roadmapTitle} ${step.title ?? ''}`.trim();
-
-  if (!resource || isHallucinatedYouTubeUrl(resource)) {
-    return { ...step, resource: toYouTubeSearchUrl(searchQuery) };
-  }
-
-  return step;
+  if (!resource || isYouTubeUrl(resource)) return { ...step, resource: undefined };
+  if (isValidHttpUrl(resource)) return step;
+  return { ...step, resource: undefined };
 }
 
-export function sanitizeRoadmapContent(content, roadmapTitle) {
-  if (!Array.isArray(content)) {
-    return [];
-  }
-  return content.map((step) => sanitizeStepResource(step, roadmapTitle));
+export function sanitizeRoadmapContent(content) {
+  if (!Array.isArray(content)) return [];
+  return content.map((step) => sanitizeStepResource(step));
 }

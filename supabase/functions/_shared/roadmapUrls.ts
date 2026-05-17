@@ -3,58 +3,52 @@ export type RoadmapStep = {
   title?: string
   diff?: string
   desc?: string
-  resource?: string
+  resource?: string  // Official docs/reference URL for this step's topic
 }
 
-export function toYouTubeSearchUrl(query: string): string {
-  const trimmed = query.trim()
-  if (!trimmed) {
-    return 'https://www.youtube.com/results?search_query=AI+tutorial'
+export function isValidHttpUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
   }
-  const encoded = encodeURIComponent(trimmed).replace(/%20/g, '+')
-  return `https://www.youtube.com/results?search_query=${encoded}`
 }
 
-export function isHallucinatedYouTubeUrl(url: string): boolean {
+export function isYouTubeUrl(url: string): boolean {
   const lower = url.toLowerCase()
-  return lower.includes('youtube.com/watch') || lower.includes('youtu.be/')
+  return lower.includes('youtube.com') || lower.includes('youtu.be')
 }
 
-export function sanitizeStepResource(
-  step: RoadmapStep,
-  roadmapTitle: string,
-): RoadmapStep {
+/**
+ * Sanitizes a single roadmap step's resource field.
+ * Accepts any valid https URL as a docs/reference link.
+ * Strips YouTube links (no longer used for text-content phase).
+ * Falls back to null so the UI can show "Read & Explore" without a docs link.
+ */
+export function sanitizeStepResource(step: RoadmapStep): RoadmapStep {
   const resource = step.resource?.trim() ?? ''
-  const searchQuery = `${roadmapTitle} ${step.title ?? ''}`.trim()
 
-  if (!resource) {
-    return { ...step, resource: toYouTubeSearchUrl(searchQuery) }
-  }
+  if (!resource) return { ...step, resource: undefined }
 
-  if (isHallucinatedYouTubeUrl(resource)) {
-    return { ...step, resource: toYouTubeSearchUrl(searchQuery) }
-  }
+  // Strip YouTube links — we are in the text-content phase
+  if (isYouTubeUrl(resource)) return { ...step, resource: undefined }
 
-  if (resource.toLowerCase().includes('youtube.com/results')) {
-    return step
-  }
+  // Accept any other valid https URL (official docs, GitHub, papers, etc.)
+  if (isValidHttpUrl(resource)) return step
 
-  return step
+  return { ...step, resource: undefined }
 }
 
 export function sanitizeRoadmapContent(
   content: RoadmapStep[],
-  roadmapTitle: string,
+  _roadmapTitle: string,
 ): RoadmapStep[] {
-  if (!Array.isArray(content)) {
-    return []
-  }
-  return content.map((step) => sanitizeStepResource(step, roadmapTitle))
+  if (!Array.isArray(content)) return []
+  return content.map((step) => sanitizeStepResource(step))
 }
 
 export function roadmapHasUnsafeYouTubeUrls(content: RoadmapStep[]): boolean {
-  if (!Array.isArray(content)) {
-    return false
-  }
-  return content.some((step) => step.resource && isHallucinatedYouTubeUrl(step.resource))
+  if (!Array.isArray(content)) return false
+  return content.some((step) => step.resource && isYouTubeUrl(step.resource))
 }

@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking, BackHandler } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ActivityIndicator, ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View, Linking, BackHandler,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -11,16 +14,53 @@ function usePalette(themeMode) {
   return themeMode === 'dark' ? DARK : LIGHT;
 }
 
-export default function ExploreScreen({ navigation }) {
-  const { themeMode, roadmaps, generateRoadmap } = useApp();
-  const colors = usePalette(themeMode);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loadingTopicId, setLoadingTopicId] = useState(null);
-  
-  // Navigation Stack for Drill-Down
-  const [stack, setStack] = useState([{ level: 'root', data: roadmaps || [], title: 'Explore AI', id: 'root' }]);
+const CONTENT_TABS = [
+  { label: 'All',      value: 'all' },
+  { label: 'Articles', value: 'article' },
+  { label: 'Research', value: 'research' },
+  { label: 'Posts',    value: 'post' },
+];
 
-  // Sync stack when roadmaps load dynamically
+const TYPE_COLOR = {
+  article:  '#059669',
+  research: '#7C3AED',
+  paper:    '#7C3AED',
+  post:     '#EA580C',
+  news:     '#0891B2',
+  tool:     '#0891B2',
+  default:  '#0891B2',
+};
+
+const TYPE_ICON = {
+  article:  'newspaper-outline',
+  research: 'document-text-outline',
+  paper:    'document-text-outline',
+  post:     'chatbubble-outline',
+  news:     'newspaper-outline',
+  default:  'link-outline',
+};
+
+export default function ExploreScreen({ navigation }) {
+  const { themeMode, roadmaps, generateRoadmap, backend } = useApp();
+  const colors = usePalette(themeMode);
+
+  const [searchQuery, setSearchQuery]   = useState('');
+  const [loadingTopicId, setLoadingTopicId] = useState(null);
+
+  // Topic content (for 'topic-content' level)
+  const [topicContent, setTopicContent]         = useState([]);
+  const [topicContentTab, setTopicContentTab]   = useState('all');
+  const [topicContentLoading, setTopicContentLoading] = useState(false);
+
+  // Search results (for 'search-results' level)
+  const [searchResults, setSearchResults]   = useState({ topics: [], items: [] });
+  const [searchLoading, setSearchLoading]   = useState(false);
+
+  // Navigation Stack for Drill-Down
+  const [stack, setStack] = useState([
+    { level: 'root', data: roadmaps || [], title: 'Explore AI', id: 'root' },
+  ]);
+
   useEffect(() => {
     if (stack.length === 1 && roadmaps && roadmaps.length > 0) {
       setStack([{ level: 'root', data: roadmaps, title: 'Explore AI', id: 'root' }]);
@@ -30,31 +70,60 @@ export default function ExploreScreen({ navigation }) {
   useEffect(() => {
     const onBackPress = () => {
       if (stack.length > 1) {
-        setStack(prev => prev.slice(0, -1));
+        setStack((prev) => prev.slice(0, -1));
         return true;
       }
       return false;
     };
-    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => subscription.remove();
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
   }, [stack]);
 
   const currentView = stack[stack.length - 1];
 
-  const pushStack = (level, data, title, id) => {
-    setStack([...stack, { level, data, title, id }]);
-  };
+  const pushStack = (level, data, title, id) =>
+    setStack((prev) => [...prev, { level, data, title, id }]);
 
   const popStack = () => {
-    if (stack.length > 1) {
-      setStack(stack.slice(0, -1));
+    if (stack.length > 1) setStack((s) => s.slice(0, -1));
+  };
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  const handleSearch = useCallback(async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setSearchLoading(true);
+    try {
+      const results = await backend.searchExploreContent(q);
+      setSearchResults(results);
+      pushStack('search-results', null, `"${q}"`, `search-${q}`);
+    } catch (e) {
+      console.error('[Explore] search error:', e);
+    } finally {
+      setSearchLoading(false);
     }
-  };
+  }, [searchQuery, backend]);
 
-  const handleSearch = () => {
-    console.log("Super Search triggered:", searchQuery);
-  };
+  // ── Topic content fetch ───────────────────────────────────────────────────
+  const loadTopicContent = useCallback(async (topicTitle) => {
+    setTopicContent([]);
+    setTopicContentTab('all');
+    setTopicContentLoading(true);
+    try {
+      const results = await backend.searchExploreContent(topicTitle);
+      // Merge explore_topics corpus results + content_items results
+      const allItems = [
+        ...(results.items ?? []),
+      ];
+      setTopicContent(allItems);
+    } catch (e) {
+      console.error('[Explore] topic content error:', e);
+    } finally {
+      setTopicContentLoading(false);
+    }
+  }, [backend]);
 
+  // ── Subfield / roadmap navigation ─────────────────────────────────────────
   const handleSubfieldClick = async (sub) => {
     let steps = sub.children || [];
     if (steps.length === 0 && sub.fieldId && generateRoadmap) {
@@ -69,11 +138,56 @@ export default function ExploreScreen({ navigation }) {
     pushStack('roadmap', steps, sub.title, sub.id);
   };
 
+  const handleRoadmapCardPress = (topic) => {
+    pushStack('topic-content', topic, topic.title, topic.id);
+    loadTopicContent(topic.title);
+  };
+
+  // ── Content card (shared between topic-content and search-results) ────────
+  const renderContentCard = (item) => {
+    const type = item.type ?? 'default';
+    const color = TYPE_COLOR[type] ?? TYPE_COLOR.default;
+    const icon  = TYPE_ICON[type]  ?? TYPE_ICON.default;
+    const url   = item.sourceUrl ?? item.source_url ?? '';
+    const src   = item.sourceName ?? item.source_name ?? item.category ?? '';
+    const time  = item.time ?? item.relative_time ?? '';
+
+    return (
+      <TouchableOpacity
+        key={item.id}
+        style={[styles.contentCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => url && Linking.openURL(url)}
+        activeOpacity={0.75}
+      >
+        <View style={[styles.contentCardBadge, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={[styles.categoryChip, { backgroundColor: `${color}12` }]}>
+            <Text style={[styles.categoryChipText, { color }]}>{item.category ?? src}</Text>
+          </View>
+          <Text style={[styles.contentTitle, { color: colors.text }]} numberOfLines={2}>
+            {item.title}
+          </Text>
+          {Boolean(item.summary) && (
+            <Text style={[styles.contentSummary, { color: colors.textSub }]} numberOfLines={2}>
+              {item.summary}
+            </Text>
+          )}
+          <Text style={[styles.contentMeta, { color: colors.textMuted }]}>
+            {[src, time].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // ── Renderers ─────────────────────────────────────────────────────────────
   const renderRoot = () => (
     <View style={styles.grid}>
       {currentView.data.map((field) => (
-        <TouchableOpacity 
-          key={field.id} 
+        <TouchableOpacity
+          key={field.id}
           style={[styles.fieldCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={() => pushStack('subfield', field.children, field.title, field.id)}
           activeOpacity={0.8}
@@ -96,8 +210,8 @@ export default function ExploreScreen({ navigation }) {
   const renderSubfields = () => (
     <View style={styles.list}>
       {currentView.data.map((sub) => (
-        <TouchableOpacity 
-          key={sub.id} 
+        <TouchableOpacity
+          key={sub.id}
           style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={() => handleSubfieldClick(sub)}
           activeOpacity={0.8}
@@ -120,24 +234,28 @@ export default function ExploreScreen({ navigation }) {
   const renderRoadmap = () => (
     <View style={styles.roadmap}>
       {currentView.data.length === 0 && (
-        <Text style={[styles.emptyRoadmap, { color: colors.textMuted }]}>
+        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
           Lesson steps are being prepared. Pull back and try again in a moment.
         </Text>
       )}
       {currentView.data.map((topic, index) => {
         const isLast = index === currentView.data.length - 1;
-        const diffColor = topic.diff === 'Beginner' ? colors.success : (topic.diff === 'Intermediate' ? colors.warning : colors.error);
-        
+        const diffColor =
+          topic.diff === 'Beginner' ? colors.success
+          : topic.diff === 'Intermediate' ? colors.warning
+          : colors.error;
+
         return (
           <View key={topic.id} style={styles.roadmapItem}>
             <View style={styles.roadmapTimeline}>
               <View style={[styles.timelineDot, { borderColor: diffColor, backgroundColor: colors.surface }]} />
               {!isLast && <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />}
             </View>
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.roadmapCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
               activeOpacity={0.8}
-              onPress={() => topic.resource && Linking.openURL(topic.resource)}
+              onPress={() => handleRoadmapCardPress(topic)}
             >
               <View style={styles.roadmapHeader}>
                 <Text style={[styles.roadmapTitle, { color: colors.text }]}>{topic.title}</Text>
@@ -145,11 +263,16 @@ export default function ExploreScreen({ navigation }) {
                   <Text style={[styles.diffText, { color: diffColor }]}>{topic.diff}</Text>
                 </View>
               </View>
-              <Text style={[styles.cardDesc, { color: colors.textMuted, marginTop: 6 }]}>{topic.desc}</Text>
-              
-              <View style={styles.resourceBtn}>
-                <Ionicons name="logo-youtube" size={16} color="#FF0000" />
-                <Text style={[styles.resourceText, { color: colors.primary }]}>Study Resource</Text>
+              <Text style={[styles.cardDesc, { color: colors.textMuted, marginTop: 6 }]}>
+                {topic.desc}
+              </Text>
+
+              <View style={styles.exploreBtn}>
+                <Ionicons name="book-outline" size={15} color={colors.primary} />
+                <Text style={[styles.exploreBtnText, { color: colors.primary }]}>
+                  Read &amp; Explore
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
               </View>
             </TouchableOpacity>
           </View>
@@ -158,10 +281,159 @@ export default function ExploreScreen({ navigation }) {
     </View>
   );
 
+  const renderTopicContent = () => {
+    const topic = currentView.data;
+    const diffColor =
+      topic.diff === 'Beginner' ? colors.success
+      : topic.diff === 'Intermediate' ? colors.warning
+      : colors.error;
+
+    const filtered =
+      topicContentTab === 'all'
+        ? topicContent
+        : topicContent.filter((i) => {
+            const t = i.type ?? '';
+            if (topicContentTab === 'research') return t === 'research' || t === 'paper';
+            return t === topicContentTab;
+          });
+
+    return (
+      <View>
+        {/* Static zone — topic definition */}
+        <View style={[styles.topicStaticCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.diffBadge, { backgroundColor: `${diffColor}20`, alignSelf: 'flex-start' }]}>
+            <Text style={[styles.diffText, { color: diffColor }]}>{topic.diff ?? 'General'}</Text>
+          </View>
+          <Text style={[styles.topicFullDesc, { color: colors.text }]}>{topic.desc}</Text>
+          {Boolean(topic.resource) && (
+            <TouchableOpacity
+              style={styles.docsLink}
+              onPress={() => Linking.openURL(topic.resource)}
+            >
+              <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+              <Text style={[styles.docsLinkText, { color: colors.primary }]}>Official Docs</Text>
+              <Ionicons name="open-outline" size={13} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Section heading */}
+        <Text style={[styles.sectionHeading, { color: colors.text }]}>Latest Content</Text>
+
+        {/* Content type tabs */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsRow}
+          style={{ marginBottom: 16 }}
+        >
+          {CONTENT_TABS.map((tab) => {
+            const active = topicContentTab === tab.value;
+            return (
+              <TouchableOpacity
+                key={tab.value}
+                onPress={() => setTopicContentTab(tab.value)}
+                style={[
+                  styles.tabPill,
+                  {
+                    backgroundColor: active ? colors.primary : colors.surface,
+                    borderColor: active ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.tabText, { color: active ? '#fff' : colors.textSub }]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Content list */}
+        {topicContentLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        ) : filtered.length === 0 ? (
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            No content found for this topic yet. Check back after the next refresh.
+          </Text>
+        ) : (
+          <View style={styles.contentList}>
+            {filtered.map((item) => renderContentCard(item))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderSearchResults = () => {
+    const { topics = [], items = [] } = searchResults;
+    const hasTopics = topics.length > 0;
+    const hasItems  = items.length > 0;
+
+    if (searchLoading) {
+      return <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />;
+    }
+
+    if (!hasTopics && !hasItems) {
+      return (
+        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+          No results found. Try a different search term.
+        </Text>
+      );
+    }
+
+    return (
+      <View>
+        {hasTopics && (
+          <>
+            <Text style={[styles.sectionHeading, { color: colors.text }]}>AI Topics</Text>
+            <View style={styles.list}>
+              {topics.map((topic) => (
+                <TouchableOpacity
+                  key={topic.id}
+                  style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    pushStack('topic-content', {
+                      title: topic.title,
+                      diff: topic.difficulty,
+                      desc: topic.short_desc,
+                      resource: topic.docs_url,
+                    }, topic.title, topic.id);
+                    loadTopicContent(topic.title);
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.listTitle, { color: colors.text }]}>{topic.title}</Text>
+                    <Text style={[styles.cardDesc, { color: colors.textMuted }]}>{topic.short_desc}</Text>
+                    <Text style={[styles.fieldTag, { color: colors.primary }]}>{topic.field}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
+        {hasItems && (
+          <>
+            <Text style={[styles.sectionHeading, { color: colors.text, marginTop: hasTopics ? 24 : 0 }]}>
+              Articles &amp; News
+            </Text>
+            <View style={styles.contentList}>
+              {items.map((item) => renderContentCard(item))}
+            </View>
+          </>
+        )}
+      </View>
+    );
+  };
+
+  // ── Layout ────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
-      
+
       <View style={styles.header}>
         {stack.length > 1 && (
           <TouchableOpacity onPress={popStack} style={styles.backBtn}>
@@ -179,26 +451,35 @@ export default function ExploreScreen({ navigation }) {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Ask anything about AI..."
+            placeholder="Search topics, articles, papers..."
             placeholderTextColor={colors.textMuted}
             style={[styles.searchInput, { color: colors.text }]}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
           />
-          <TouchableOpacity onPress={handleSearch}>
-            <Ionicons name="arrow-forward-circle" size={22} color={colors.primary} />
-          </TouchableOpacity>
+          {searchLoading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <TouchableOpacity onPress={handleSearch}>
+              <Ionicons name="arrow-forward-circle" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {currentView.level === 'root' && renderRoot()}
-        {currentView.level === 'subfield' && renderSubfields()}
-        {currentView.level === 'roadmap' && renderRoadmap()}
+        {currentView.level === 'root'           && renderRoot()}
+        {currentView.level === 'subfield'       && renderSubfields()}
+        {currentView.level === 'roadmap'        && renderRoadmap()}
+        {currentView.level === 'topic-content'  && renderTopicContent()}
+        {currentView.level === 'search-results' && renderSearchResults()}
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      <FloatingChat isDark={themeMode === 'dark'} pageContext={{ type: 'explore', query: searchQuery }} />
+      <FloatingChat
+        isDark={themeMode === 'dark'}
+        pageContext={{ type: 'explore', query: searchQuery }}
+      />
     </SafeAreaView>
   );
 }
@@ -238,6 +519,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: SPACING.base,
   },
+  // Root grid
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -268,6 +550,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  topicCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  // List (subfields / search topics)
   list: {
     gap: 12,
   },
@@ -283,6 +571,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 4,
   },
+  fieldTag: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  // Roadmap
   roadmap: {
     marginTop: 8,
   },
@@ -338,28 +632,121 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
   },
-  resourceBtn: {
+  exploreBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: 'rgba(150,150,150,0.2)',
   },
-  resourceText: {
+  exploreBtnText: {
     fontSize: 13,
     fontWeight: '700',
+    flex: 1,
   },
-  topicCount: {
-    fontSize: 12,
+  // Topic content (static zone)
+  topicStaticCard: {
+    borderRadius: RADIUS.lg,
+    padding: 18,
+    borderWidth: 1,
+    marginBottom: 20,
+    gap: 12,
+  },
+  topicFullDesc: {
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '400',
+  },
+  docsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(150,150,150,0.2)',
+  },
+  docsLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+  },
+  // Section heading
+  sectionHeading: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  // Tabs
+  tabsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 8,
+  },
+  tabPill: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    borderWidth: 1.5,
+  },
+  tabText: {
+    fontSize: 13,
     fontWeight: '600',
-    marginTop: 8,
   },
-  emptyRoadmap: {
-    fontSize: 14,
-    lineHeight: 20,
-    paddingVertical: 24,
+  // Content cards
+  contentList: {
+    gap: 10,
+  },
+  contentCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    borderWidth: 1,
+  },
+  contentCardBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  categoryChip: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    marginBottom: 6,
+  },
+  categoryChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  contentTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  contentSummary: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  contentMeta: {
+    fontSize: 11,
+    marginTop: 6,
+  },
+  // Empty state
+  emptyText: {
+    fontSize: 14,
+    lineHeight: 22,
+    paddingVertical: 32,
+    textAlign: 'center',
   },
 });

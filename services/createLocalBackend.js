@@ -433,6 +433,25 @@ export function createLocalBackend(storage) {
       await writeState(state);
       return token;
     },
+    async searchExploreContent(query) {
+      const state = await readState();
+      const q = String(query ?? '').toLowerCase();
+      const matchingItems = state.contentItems.filter(
+        (item) =>
+          item.title?.toLowerCase().includes(q) ||
+          item.summary?.toLowerCase().includes(q) ||
+          item.source_name?.toLowerCase().includes(q),
+      );
+      return {
+        topics: [],
+        items: matchingItems.slice(0, 20).map((item) => normalizeContentItem(item)).filter(Boolean),
+      };
+    },
+
+    async fetchTopicContent(_topicId) {
+      return [];
+    },
+
     async sendChatMessage(userId, { message, pageContext }) {
       const state = await readState();
       const response = personalizeChatReply(message, pageContext, state);

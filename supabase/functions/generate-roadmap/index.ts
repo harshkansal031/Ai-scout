@@ -64,17 +64,17 @@ serve(async (req) => {
       throw new Error("GEMINI_API_KEY is not set")
     }
 
-    const prompt = `You are an expert AI curriculum designer. Build a progressive 4-5 step learning roadmap for the topic: "${title}". 
+    const prompt = `You are an expert AI curriculum designer. Build a progressive 4-5 step learning roadmap for the topic: "${title}".
 Description context: ${description || 'N/A'}.
 
-For each step, find the absolute best educational resource (prioritizing high-quality YouTube video tutorials, or canonical articles if no good video exists) that explains it. 
+For each step, identify the official documentation URL or best canonical reference for that specific concept.
 
 Return ONLY a valid JSON array of objects, with no markdown formatting or extra text. Each object must have:
 - "id": a short unique string (e.g. "t1")
 - "title": Title of the topic
 - "diff": "Beginner", "Intermediate", or "Advanced"
 - "desc": One short, punchy sentence explaining what they will learn.
-- "resource": A YouTube search URL to find the best tutorials for this topic. NEVER guess a direct video URL (like watch?v=) because it will be a fake link. ALWAYS use the search format: "https://www.youtube.com/results?search_query=Andrej+Karpathy+Neural+Networks" (replace spaces with +).`
+- "resource": The official documentation URL or best canonical reference for this step (e.g. "https://pytorch.org/docs/stable/nn.html" for PyTorch modules, "https://huggingface.co/docs/transformers" for HuggingFace). Use null if no official docs exist. NEVER use YouTube URLs.`
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',

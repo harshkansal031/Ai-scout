@@ -1,110 +1,336 @@
-# 🗺️ Scout AI: The Ultimate Product & Technical Blueprint
-
-This document serves as the **Master Blueprint and Technical Source of Truth** for Scout AI. It maps out our ultimate vision for every single component of the application, captures every breakthrough we have built so far, and outlines exactly what is left to turn Scout AI into the world's #1 personalized AI Mentor.
-
----
-
-## 1. 💡 App Philosophy & Core Objective
-
-Scout AI is engineered to be a **one-stop personalized AI mentor ecosystem** that integrates seamlessly into a user's daily routine. It is designed to scale with a user's growing intelligence—guiding them from absolute curiosity (Beginner) to technical execution (Expert). 
-
-It acts as the **"Google Chrome & Netflix of AI"**—beautiful, highly interactive, precomputed, and extremely fast, while silently observing user interests to personalize their learning experience.
+# Scout AI — Explore Section: Text-Based Content Discovery
+**Blueprint & Next Steps**
+*Last updated: May 17, 2026*
 
 ---
 
-## 2. 🗂️ Core Features Breakdown
+## What I Understand (Full Picture)
 
-Below is the exhaustive breakdown of each feature, its ultimate product goal, its current implementation status, and exactly what needs to be built next.
+### The Core Mental Model — Netflix Architecture
 
-### 🎥 Feature A: Dynamic Explore Hub ("Netflix for AI")
-*   **The Ultimate Goal:** A gorgeous, nested "drill-down" visual navigation interface (Root Category $\rightarrow$ Sub-field $\rightarrow$ Roadmap timeline sheet) modeled after premium learning paths (like Striver DSA sheets). The timeline steps act as a structured curriculum with curated high-quality YouTube videos and papers.
-*   **Built So Far:**
-    *   Re-designed `ExploreScreen.js` with stack-based local navigation to support deeply nested subfields without lag.
-    *   Wrote the database schema (`ai_fields` and `ai_roadmaps` tables) in Supabase.
-    *   Created `populate.js` to bulk-generate high-quality progressive roadmaps using our backend Edge Function.
-    *   Integrated Deno-based `generate-roadmap` Edge Function powered by Gemini 2.5 Flash to automatically curate progressive curriculums.
-*   **What is Left:**
-    *   Enhance the visual cards with rich custom icons, harmonious colors, and subtle micro-animations (glassmorphism/gradients).
-    *   Add a checkmark/completion state on each timeline step in the UI so the user can tick off lessons like a checklist, storing their progress in Supabase.
+Think of how Netflix works:
+
+- The **movie title, description, genre, cast** never changes every day. It is precomputed once and served instantly from a database.
+- The **"New Episodes", "Trending Now", "What's popular this week"** sections DO change — but not on every user request. They are refreshed in the background on a schedule.
+- When Netflix refreshes "Trending Now", it **never shows an empty shelf** mid-refresh. The old list stays visible until the new list is completely ready, then it atomically swaps in.
+
+**This is exactly what you're describing for Explore.**
 
 ---
 
-### 🕷️ Feature B: The Infinite Knowledge Expander (Backend Pipeline)
-*   **The Ultimate Goal:** A completely automated, zero-latency system. As our automated scraper ingests global AI news, it extracts emerging terms (e.g., "Sora" or "Voice Agents"). If the database lacks a roadmap for that term, a background process automatically generates a high-quality curriculum. The next time the user opens the app, it is already precomputed and instantly available without loading spinners.
-*   **Built So Far:**
-    *   Integrated the `expandKnowledgeGraph` module directly into the `ingest-feed` Edge Function.
-    *   The engine analyzes the top news headlines using Gemini, extracts newly emerging subfields, slugs them, checks the DB, and triggers `generate-roadmap` to pre-generate the curriculum.
-*   **What is Left:**
-    *   Set up a production Supabase Cron trigger (`pg_net` or edge cron) to automatically ping `ingest-feed` every 6 to 12 hours so the knowledge expander runs completely autonomously in the background.
+### Two-Layer Data Model
+
+#### Layer 1 — Static Precomputed Layer (Topic Definitions)
+This is the "movie title + description" equivalent. For any AI topic the user might explore:
+
+- What is this topic? (definition, overview)
+- What field does it belong to?
+- What are the key concepts?
+- What is the official documentation URL?
+- What difficulty level is it?
+
+This data **does not change frequently**. It is precomputed once (or very rarely updated) for a large corpus of AI topics — every common term, framework, model, concept in the AI landscape. Think ~500–1000+ entries covering everything from "Linear Regression" to "Mixture of Experts" to "RLHF".
+
+**Seeding strategy:** Run a one-time Gemini-powered job that generates structured definitions for the full AI topic corpus and stores them in Supabase. This is the foundation.
+
+#### Layer 2 — Dynamic Content Layer (Articles, Papers, News, Posts)
+This is the "Trending Now" equivalent. For each topic:
+
+- Latest articles and blog posts
+- Recent research papers (ArXiv, Semantic Scholar)
+- Industry news and market updates
+- Community posts (Dev.to, Hacker News)
+
+This data **changes daily**. It is refreshed by a **cron job that runs 1–2 times per day**. The cron job fetches fresh content from external sources, stores it in the DB, and only removes the old content after the new content is confirmed ready.
+
+**Critical rule: old content is never deleted until new content is fully ready.** Zero empty states, zero broken feeds during refresh.
 
 ---
 
-### 🕵️ Feature C: The Silent Personalized Tracking Engine ("The Invisible Hand")
-*   **The Ultimate Goal:** The app acts as an invisible personal assistant. It silently tracks user search queries, article clicks, and completed roadmap steps. Using this, the app continuously ranks news articles and daily topics to prioritize their specific interest (e.g. advanced model fine-tuning vs. beginner prompt tips) while maintaining a **Smart Override** for breaking global events.
-*   **Built So Far:**
-    *   Created the backend `mark_topic_complete` SQL procedure to handle LeetCode-style streak resets.
-    *   Implemented the `trackItemClick` context hook which dynamically re-ranks the Today screen feed based on user click patterns.
-*   **What is Left:**
-    *   Connect the `trackItemClick` engine to the roadmap cards. Clicking a RAG step in the roadmap should immediately notify the tracking engine, which will then push advanced vector database news to the top of the user's feed.
+### Search Bar Behavior (DB-First, Not Live API)
+
+The search bar in the Explore section queries **our own Supabase database**, not external APIs in real time. This means:
+
+```
+User types "Transformers" → hit our DB → return matching topics + their content
+```
+
+Not:
+```
+User types "Transformers" → call ArXiv API live → wait → show results (bad)
+```
+
+This gives sub-100ms search response times. The content is already in our DB, pre-fetched and indexed. The search bar finds topics by name, tags, field, description — anything we've precomputed.
 
 ---
 
-### 🔍 Feature D: The "Super Search" Bar
-*   **The Ultimate Goal:** A powerful search omni-box at the top of the Explore page. Instead of just doing basic text matching, if a user searches for a hyper-specific question (e.g., *"How do I run Llama 3 locally?"*), the backend leverages multi-model routing to instantly serve an answer, key articles, and a custom mini-curriculum.
-*   **Built So Far:**
-    *   Designed the UI Search Bar in `ExploreScreen.js`.
-    *   Direct text matching exists for news items and daily topics.
-*   **What is Left:**
-    *   Connect the Explore search input to an Edge Function that queries Groq (Llama 3) for lightning-fast answer streaming and Gemini for deep resource mapping.
+## Architecture Diagram
 
----
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        SUPABASE DB                          │
+│                                                             │
+│  explore_topics (STATIC — seeded once, rarely changes)      │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ id │ title │ field │ desc │ tags │ docs_url │ diff  │   │
+│  │ .. │ "CNN" │ "CV"  │ "..."│ [...] │ "tf.org" │ "Int"│   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  topic_content (DYNAMIC — cron refreshed 1–2x per day)     │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ id │ topic_id │ type     │ title │ url │ source │ ts │  │
+│  │ .. │ "cnn-01" │"research"│ "..." │ "." │"arxiv" │ . │  │
+│  │ .. │ "cnn-01" │"article" │ "..." │ "." │"devto" │ . │  │
+│  │ .. │ "cnn-01" │"news"    │ "..." │ "." │"hn"    │ . │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+         ▲                              ▲
+         │ seed once                   │ cron job (1–2x/day)
+         │                             │
+  ┌──────────────┐            ┌────────────────────┐
+  │ Seed Script  │            │ Supabase Scheduled │
+  │ (Gemini-     │            │ Edge Function /    │
+  │  powered,    │            │ pg_cron job        │
+  │  run once)   │            │                    │
+  └──────────────┘            │ fetch → stage →    │
+                              │ verify → swap       │
+                              └────────────────────┘
+                                         ▲
+                              Dev.to, ArXiv, Semantic Scholar,
+                              Hacker News, NewsAPI, PapersWithCode
 
-### 🛠️ Feature E: Trending AI Tools Directory
-*   **The Ultimate Goal:** A beautiful, responsive grid/masonry layout on the Explore tab showcasing the newest AI tools, sorted by categories (Image Generation, Coding Assistants, Video, Writing). We will scrape this automatically from product-hunt-style platforms to keep Scout AI as the #1 discovery page.
-*   **Built So Far:**
-    *   Conceptualized UI structure.
-*   **What is Left:**
-    *   Add a new table `ai_tools` to the Supabase database.
-    *   Build a scraping module in our Edge Function to grab trending tools and update the UI in `ExploreScreen.js`.
-
----
-
-### 📚 Feature F: The "AI Dictionary" / Glossary
-*   **The Ultimate Goal:** AI jargon (RAG, LoRA, Quantization) is confusing. A sleek, searchable A-Z glossary page will act as a reference dictionary. Tapping any term slides up a premium bottom sheet drawer displaying an "Explain it like I'm 5" definition and a button to go to a full learning lesson.
-*   **Built So Far:**
-    *   Conceptualized UX flow.
-*   **What is Left:**
-    *   Create a glossary table in Supabase.
-    *   Implement the A-Z searchable layout and bottom sheet in `ExploreScreen.js`.
-
----
-
-## 3. 🗺️ Project Architecture Map
-
-```mermaid
-graph TD
-    A[Hacker News / arXiv Scraper] -->|Every Hour| B[ingest-feed Edge Function]
-    B -->|Extract New Topics via Gemini| C{Does Roadmap Exist?}
-    C -->|No| D[generate-roadmap Edge Function]
-    D -->|Build Curriculum + YouTube Search| E[(Supabase DB)]
-    C -->|Yes| E
-    
-    F[Mobile App Explore Screen] -->|Instant Load| E
-    F -->|trackItemClick| G[Personalization Engine]
-    G -->|Dynamic Re-ranking| H[User Feed & Today Tab]
+         ▼ (read path — all from DB, zero live API calls)
+┌─────────────────────────────────────────────────────────────┐
+│                      MOBILE APP (React Native)              │
+│                                                             │
+│  ExploreScreen (root → subfield → roadmap → topic-detail)  │
+│                                                             │
+│  Search bar → queries explore_topics table (text search)   │
+│                                                             │
+│  Topic Detail Page:                                         │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ [STATIC ZONE — always instant]                        │  │
+│  │  Topic name, definition, field, difficulty, docs link │  │
+│  │                                                        │  │
+│  │ [DYNAMIC ZONE — from topic_content, tabs]             │  │
+│  │  Articles | Research | News | Posts                   │  │
+│  │  (refreshed by cron, reads from DB, never live API)   │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 4. 🚀 Next Steps Execution Plan
+## Database Schema
 
-When you are ready to jump back in, here is our tactical checklist:
+### Table: `explore_topics` (Static Layer)
+```sql
+create table explore_topics (
+  id           text primary key,        -- e.g. "transformer-architecture"
+  title        text not null,           -- "Transformer Architecture"
+  field        text,                    -- "Natural Language Processing"
+  field_id     text,                    -- FK to roadmap fields
+  description  text,                    -- Full definition / overview
+  short_desc   text,                    -- One-liner for cards
+  tags         text[],                  -- ["attention", "nlp", "encoder-decoder"]
+  difficulty   text,                    -- "Beginner" | "Intermediate" | "Advanced"
+  docs_url     text,                    -- Official documentation URL
+  created_at   timestamptz default now(),
+  updated_at   timestamptz default now()
+);
+```
 
-1.  **Finalize Roadmap Interaction:** Add step checklist tracking in the mobile UI to let users mark lessons as done.
-2.  **Build the "Super Search" Engine:** Connect the Explore search bar to Groq/Llama 3.
-3.  **Implement the AI Tools Directory:** Create the `ai_tools` DB table and build the visual directory.
-4.  **Implement the AI Dictionary:** Design the dictionary slide-up drawer.
+### Table: `topic_content` (Dynamic Layer)
+```sql
+create table topic_content (
+  id           text primary key,        -- "{source}-{hash}"
+  topic_id     text references explore_topics(id),
+  type         text not null,           -- "article" | "research" | "news" | "post"
+  title        text not null,
+  summary      text,
+  source_url   text not null,
+  source_name  text,                    -- "ArXiv", "Dev.to", "Hacker News"
+  category     text,
+  category_color text,
+  published_at timestamptz,
+  fetched_at   timestamptz default now(),
+  is_staging   boolean default false,  -- true while cron is building next batch
+  batch_id     text                    -- cron run ID for atomic swap
+);
+```
+
+> The `is_staging` + `batch_id` columns are the key to the atomic swap. The cron job inserts new rows with `is_staging = true`. After the full batch is verified, it flips all to `is_staging = false` and deletes the old batch in a single transaction. Users always see the last confirmed batch — never an empty state.
 
 ---
-> [!NOTE]
-> All built components (`populate.js`, `generate-roadmap`, and `ingest-feed`) are completely live, deployed, and fully connected to your production Supabase backend.
+
+## Seeding Strategy (One-Time Bootstrap)
+
+We need to precompute the AI topic corpus. Target: **500–800 topics** covering:
+
+- Core ML/AI concepts (Linear Regression, Backpropagation, Attention, etc.)
+- Architectures (ResNet, BERT, GPT, Diffusion, VAE, GAN, etc.)
+- Frameworks & tools (PyTorch, TensorFlow, LangChain, HuggingFace, etc.)
+- Research areas (Computer Vision, NLP, RL, Robotics, Multimodal, etc.)
+- Industry topics (RAG, Fine-tuning, Quantization, RLHF, etc.)
+- Emerging topics (Agents, MoE, Test-time compute, etc.)
+
+**Seeding process:**
+1. Maintain a master list of topic titles (can be a JSON file or spreadsheet)
+2. Run a one-time Gemini-powered seeding script that for each topic generates:
+   - Full description, short description
+   - Tags, difficulty level
+   - Official docs URL
+3. Bulk insert into `explore_topics`
+4. Immediately after, run first content fetch for all topics (populates `topic_content`)
+
+This seed script runs **once** (or manually triggered when we add new topics to the corpus). It is not part of the cron job.
+
+---
+
+## Cron Job Design (Daily Content Refresh)
+
+**Runs:** 1–2 times per day (e.g., 6 AM and 6 PM UTC)
+**Implemented as:** Supabase `pg_cron` extension OR a scheduled Supabase Edge Function
+
+### Refresh Flow (Atomic Swap Pattern)
+
+```
+1. Generate a new batch_id (e.g., UUID + timestamp)
+
+2. For each topic in explore_topics:
+   a. Fan out to content sources (Dev.to, ArXiv, Semantic Scholar, HN, NewsAPI)
+   b. Normalize results into topic_content shape
+   c. INSERT all new rows with is_staging = true, batch_id = new_batch_id
+
+3. Verify the batch:
+   - Count rows per topic — if any topic has 0 new items, keep its old content
+   - Check for broken URLs or empty titles
+   - Confirm batch is healthy
+
+4. ATOMIC SWAP (single transaction):
+   BEGIN;
+     UPDATE topic_content SET is_staging = false
+       WHERE batch_id = new_batch_id;
+     DELETE FROM topic_content
+       WHERE is_staging = false
+       AND batch_id != new_batch_id;
+   COMMIT;
+
+5. Log cron run result to a cron_runs table
+```
+
+**Result:** Users always read from `is_staging = false` rows. During a cron run (step 1–3), they see the previous batch. At step 4, they instantly see the new batch. Zero empty states.
+
+---
+
+## Content Sources for Cron Fetches
+
+| Source | Content Type | API Key Needed | Free Limit |
+|---|---|---|---|
+| **Dev.to** | Articles | No | Unlimited |
+| **Hacker News (Algolia)** | Posts, discussions | No | Unlimited |
+| **ArXiv** | Research papers | No | Unlimited |
+| **Semantic Scholar** | Research papers | No | 100 req/5min |
+| **PapersWithCode** | Papers + benchmarks | No | Unlimited |
+| **Medium RSS** | Blog articles | No | Unlimited |
+| **NewsAPI.org** | Industry news | Yes (free tier) | 100 req/day |
+| **GNews.io** | Market updates | Yes (free tier) | 100 req/day |
+
+> **Stage 1 plan:** Use only no-key sources (Dev.to, HN, ArXiv, Semantic Scholar, PapersWithCode). These alone cover articles, research, and community content well. Add NewsAPI/GNews when we have keys ready.
+
+---
+
+## What Changes in the App (UI)
+
+### Explore Screen — Search Bar
+Currently: search does nothing (`console.log`)
+**After:** Queries `explore_topics` table full-text search → returns matching topics → shows them in a list → user taps → goes to topic detail
+
+### Explore Screen — Roadmap Cards
+Currently: YouTube button → external browser
+**After:** "Read & Explore" button → pushes `topic-content` level in the drill-down stack
+
+### New: Topic Detail View (`level: 'topic-content'`)
+```
+┌─────────────────────────────────────────┐
+│  ← Transformer Architecture    [★ Save] │
+├─────────────────────────────────────────┤
+│  STATIC ZONE (always instant)           │
+│  ┌───────────────────────────────────┐  │
+│  │ Natural Language Processing       │  │
+│  │ Intermediate  •  Official Docs ↗  │  │
+│  │                                   │  │
+│  │ "The transformer is a neural      │  │
+│  │  network architecture that..."    │  │
+│  └───────────────────────────────────┘  │
+├─────────────────────────────────────────┤
+│  DYNAMIC ZONE (tabs)                    │
+│  [Articles] [Research] [News] [Posts]   │
+│  ┌───────────────────────────────────┐  │
+│  │ 📄 Attention Is All You Need      │  │
+│  │    ArXiv · 2 days ago        [🔖] │  │
+│  ├───────────────────────────────────┤  │
+│  │ 📝 How Transformers Work in 2026  │  │
+│  │    Dev.to · 5 hours ago      [🔖] │  │
+│  └───────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Revised Next Steps (Updated Order)
+
+### Step 1 — Database Setup
+- Create `explore_topics` table in Supabase
+- Create `topic_content` table with `is_staging` + `batch_id` columns
+- Create indexes on `topic_id`, `type`, `is_staging`, and full-text search on `explore_topics.title + tags`
+
+### Step 2 — Build Seed Script
+- Create a master topic list (500–800 AI terms)
+- Build a Gemini-powered seed script that generates structured definitions for each
+- Run it once → `explore_topics` table is populated
+
+### Step 3 — Build `fetch-topic-content` Supabase Edge Function
+- Accepts `{ topic_ids[], batch_id }` — fetches content for a list of topics
+- Fans out to Dev.to, ArXiv, Semantic Scholar, Hacker News
+- Inserts results as `is_staging = true`
+- Can be called by cron job OR the seed script (for initial content population)
+
+### Step 4 — Set Up Cron Job
+- Supabase `pg_cron` schedule: `0 6,18 * * *` (6 AM and 6 PM UTC)
+- Calls `fetch-topic-content` for all active topics
+- Executes atomic swap after batch is verified
+
+### Step 5 — Update `ExploreScreen.js`
+- Wire search bar to query `explore_topics` table
+- Add `topic-content` level to navigation stack
+- Replace YouTube button with "Read & Explore"
+- Build `renderTopicContent()` with static zone + dynamic tabs
+
+### Step 6 — Wire Backend Services
+- Add `searchTopics(query)` to `supabaseBackend.js`
+- Add `fetchTopicDetail(topicId)` — returns static + dynamic content
+- Update `localBackend.js` as fallback
+
+### Step 7 — Polish & Test
+- Verify search relevance across diverse queries
+- Confirm atomic swap works (no empty states)
+- Test bookmarking on topic-content cards
+- Validate cron schedule and batch health checks
+
+---
+
+## Summary Table
+
+| Concern | Decision |
+|---|---|
+| Search bar behavior | Queries our DB — zero live API calls |
+| Static content (definitions, docs) | Precomputed once via seed script, rarely changes |
+| Dynamic content (articles, papers, news) | Cron-refreshed 1–2x per day, stored in DB |
+| Empty state protection | Atomic swap — old content lives until new batch is verified |
+| Seeding scope | 500–800 AI topics (the full generic + advanced corpus) |
+| Cron implementation | Supabase pg_cron or scheduled Edge Function |
+| Content sources (Stage 1) | Dev.to, ArXiv, Semantic Scholar, HN — all zero API key |
+| Content sources (later) | NewsAPI, GNews for market news |
+| YouTube resources | Preserved as future "Videos" tab, not deleted |
+| App stack levels | root → subfield → roadmap → topic-content (NEW) |
