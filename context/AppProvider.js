@@ -78,6 +78,14 @@ export function AppProvider({ children }) {
     bootstrapUser(session.user.id);
   }, [session?.user?.id]);
 
+  useEffect(() => {
+    if (session?.user?.id || !backend.fetchRoadmaps) {
+      return;
+    }
+
+    backend.fetchRoadmaps().then(setRoadmaps).catch(() => setRoadmaps([]));
+  }, [session?.user?.id]);
+
   async function bootstrapUser(userId) {
     setDataLoading(true);
     setError('');
@@ -101,13 +109,17 @@ export function AppProvider({ children }) {
       setRoadmaps(initialRoadmaps);
       setExploreResults(EMPTY_EXPLORE);
 
-      // Fire off a background ingest to scrape platforms automatically on app open
       if (backend.triggerIngestFeed) {
         backend.triggerIngestFeed()
-          .then(() => backend.fetchFeed('news'))
-          .then((freshItems) => {
-             // We don't apply full sorting here to avoid jumping, but we update the feed
-             setFeed(prev => freshItems.length > 0 ? freshItems : prev);
+          .then(() => Promise.all([
+            backend.fetchFeed('news'),
+            backend.fetchRoadmaps?.() ?? Promise.resolve(initialRoadmaps),
+          ]))
+          .then(([freshItems, freshRoadmaps]) => {
+             setFeed((prev) => (freshItems.length > 0 ? freshItems : prev));
+             if (freshRoadmaps?.length) {
+               setRoadmaps(freshRoadmaps);
+             }
           })
           .catch((err) => console.warn('Background ingest failed:', err.message));
       }
@@ -318,18 +330,33 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function generateRoadmap(fieldId, roadmapId, title, description) {
-    setDataLoading(true);
+  async function refreshRoadmaps() {
+    if (!backend.fetchRoadmaps) {
+      return [];
+    }
     try {
-      const newRoadmapContent = await backend.generateRoadmap(fieldId, roadmapId, title, description);
-      const updatedRoadmaps = await backend.fetchRoadmaps();
-      setRoadmaps(updatedRoadmaps);
+      const updated = await backend.fetchRoadmaps();
+      setRoadmaps(updated);
+      return updated;
+    } catch (e) {
+      console.warn('Failed to refresh roadmaps:', e.message);
+      return roadmaps;
+    }
+  }
+
+  async function generateRoadmap(fieldId, roadmapId, title, description) {
+    try {
+      const newRoadmapContent = await backend.generateRoadmap(
+        fieldId,
+        roadmapId,
+        title,
+        description,
+      );
+      await refreshRoadmaps();
       return newRoadmapContent;
     } catch (e) {
       setError(e.message);
       return null;
-    } finally {
-      setDataLoading(false);
     }
   }
 
@@ -409,6 +436,7 @@ export function AppProvider({ children }) {
       trackItemClick,
       trackSearch,
       generateRoadmap,
+      refreshRoadmaps,
     }),
     [
       authLoading,
@@ -426,6 +454,7 @@ export function AppProvider({ children }) {
       todayTopic,
       continueLearning,
       localInterests,
+      roadmaps,
     ],
   );
 

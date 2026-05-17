@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../lib/supabase.js';
 import { isSupabaseConfigured } from '../lib/env.js';
 import { groupExploreResults, normalizeContentItem, normalizeTopic } from './mappers.js';
+import { sanitizeRoadmapContent } from './roadmapUrls.js';
 
 const CHAT_FUNCTION = 'chat';
 const EXPLORE_FUNCTION = 'explore-search';
@@ -222,12 +223,17 @@ export const supabaseBackend = {
       desc: f.description,
       children: roadmapsRes.data
         .filter((r) => r.field_id === f.id)
-        .map((r) => ({
-          id: r.id,
-          title: r.title,
-          desc: r.description,
-          children: typeof r.content === 'string' ? JSON.parse(r.content) : r.content
-        }))
+        .map((r) => {
+          const rawContent = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+          const steps = Array.isArray(rawContent) ? rawContent : [];
+          return {
+            id: r.id,
+            title: r.title,
+            desc: r.description,
+            fieldId: f.id,
+            children: steps.length > 0 ? sanitizeRoadmapContent(steps, r.title) : [],
+          };
+        })
     }));
   },
 

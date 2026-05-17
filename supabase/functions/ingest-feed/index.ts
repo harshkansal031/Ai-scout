@@ -243,17 +243,28 @@ async function expandKnowledgeGraph(supabase: any, newItems: FeedItem[]) {
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
   if (!GEMINI_API_KEY) return;
 
-  // Grab the top 15 titles to analyze
+  const { data: fieldRows } = await supabase
+    .from('ai_fields')
+    .select('id, title')
+    .order('sort_order', { ascending: true });
+
+  const fieldList = (fieldRows ?? [])
+    .map((f: { id: string; title: string }) => `"${f.id}" (${f.title})`)
+    .join(', ');
+
+  if (!fieldList) return;
+
   const titles = newItems.slice(0, 15).map(i => i.title).join('\n');
   
-  const prompt = `You are an AI trend analyzer. Read these recent news headlines and identify the single most important emerging AI subfield, architecture, or tool mentioned (e.g., "Video Generation", "AI Agents", "MoE", "Voice Models"). 
+  const prompt = `You are an AI trend analyzer. Read these recent news headlines and identify the single most important emerging AI subfield, architecture, or tool mentioned.
 Headlines:
 ${titles}
 
 Return ONLY a valid JSON object with:
 - "title": The name of the topic
 - "desc": A one-sentence description of what it is.
-- "field_id": Categorize it strictly into either "gen-ai", "ml-core", or "agents".`;
+- "field_id": The best-matching category id from this list: ${fieldList}
+Use ONLY an id from that list. If nothing fits, pick the closest category.`;
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
@@ -271,6 +282,12 @@ Return ONLY a valid JSON object with:
     
     const topic = JSON.parse(text);
     if (!topic.title || !topic.field_id) return;
+
+    const validFieldIds = new Set((fieldRows ?? []).map((f: { id: string }) => f.id));
+    if (!validFieldIds.has(topic.field_id)) {
+      topic.field_id = (fieldRows ?? [])[0]?.id;
+    }
+    if (!topic.field_id) return;
 
     // Convert title to an ID (slug)
     const roadmapId = topic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 30);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking, BackHandler } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -12,9 +12,10 @@ function usePalette(themeMode) {
 }
 
 export default function ExploreScreen({ navigation }) {
-  const { themeMode, roadmaps } = useApp();
+  const { themeMode, roadmaps, generateRoadmap } = useApp();
   const colors = usePalette(themeMode);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadingTopicId, setLoadingTopicId] = useState(null);
   
   // Navigation Stack for Drill-Down
   const [stack, setStack] = useState([{ level: 'root', data: roadmaps || [], title: 'Explore AI', id: 'root' }]);
@@ -54,8 +55,18 @@ export default function ExploreScreen({ navigation }) {
     console.log("Super Search triggered:", searchQuery);
   };
 
-  const handleSubfieldClick = (sub) => {
-    pushStack('roadmap', sub.children || [], sub.title, sub.id);
+  const handleSubfieldClick = async (sub) => {
+    let steps = sub.children || [];
+    if (steps.length === 0 && sub.fieldId && generateRoadmap) {
+      setLoadingTopicId(sub.id);
+      try {
+        const generated = await generateRoadmap(sub.fieldId, sub.id, sub.title, sub.desc);
+        steps = Array.isArray(generated) ? generated : [];
+      } finally {
+        setLoadingTopicId(null);
+      }
+    }
+    pushStack('roadmap', steps, sub.title, sub.id);
   };
 
   const renderRoot = () => (
@@ -72,6 +83,11 @@ export default function ExploreScreen({ navigation }) {
           </View>
           <Text style={[styles.cardTitle, { color: colors.text }]}>{field.title}</Text>
           <Text style={[styles.cardDesc, { color: colors.textMuted }]}>{field.desc}</Text>
+          {(field.children?.length ?? 0) > 0 && (
+            <Text style={[styles.topicCount, { color: colors.primary }]}>
+              {field.children.length} topics
+            </Text>
+          )}
         </TouchableOpacity>
       ))}
     </View>
@@ -85,12 +101,17 @@ export default function ExploreScreen({ navigation }) {
           style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={() => handleSubfieldClick(sub)}
           activeOpacity={0.8}
+          disabled={loadingTopicId === sub.id}
         >
           <View style={{ flex: 1 }}>
             <Text style={[styles.listTitle, { color: colors.text }]}>{sub.title}</Text>
             <Text style={[styles.cardDesc, { color: colors.textMuted }]}>{sub.desc}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          {loadingTopicId === sub.id ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          )}
         </TouchableOpacity>
       ))}
     </View>
@@ -98,6 +119,11 @@ export default function ExploreScreen({ navigation }) {
 
   const renderRoadmap = () => (
     <View style={styles.roadmap}>
+      {currentView.data.length === 0 && (
+        <Text style={[styles.emptyRoadmap, { color: colors.textMuted }]}>
+          Lesson steps are being prepared. Pull back and try again in a moment.
+        </Text>
+      )}
       {currentView.data.map((topic, index) => {
         const isLast = index === currentView.data.length - 1;
         const diffColor = topic.diff === 'Beginner' ? colors.success : (topic.diff === 'Intermediate' ? colors.warning : colors.error);
@@ -324,5 +350,16 @@ const styles = StyleSheet.create({
   resourceText: {
     fontSize: 13,
     fontWeight: '700',
-  }
+  },
+  topicCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  emptyRoadmap: {
+    fontSize: 14,
+    lineHeight: 20,
+    paddingVertical: 24,
+    paddingHorizontal: 8,
+  },
 });

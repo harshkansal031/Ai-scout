@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1"
+import {
+  roadmapHasUnsafeYouTubeUrls,
+  sanitizeRoadmapContent,
+  type RoadmapStep,
+} from "../_shared/roadmapUrls.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,7 +17,7 @@ serve(async (req) => {
   }
 
   try {
-    const { field_id, roadmap_id, title, description } = await req.json()
+    const { field_id, roadmap_id, title, description, force_regenerate } = await req.json()
 
     if (!field_id || !roadmap_id || !title) {
       throw new Error("Missing required fields: field_id, roadmap_id, title")
@@ -23,26 +28,42 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 1. Check if it already exists to prevent duplicate generation (The Infinite Library)
     const { data: existing } = await supabaseClient
       .from('ai_roadmaps')
       .select('content')
       .eq('id', roadmap_id)
       .maybeSingle()
 
-    if (existing && existing.content && existing.content.length > 0) {
-      return new Response(JSON.stringify(existing.content), {
+    const existingContent = existing?.content as RoadmapStep[] | undefined
+
+    if (
+      !force_regenerate &&
+      existingContent &&
+      Array.isArray(existingContent) &&
+      existingContent.length > 0
+    ) {
+      if (roadmapHasUnsafeYouTubeUrls(existingContent)) {
+        const repaired = sanitizeRoadmapContent(existingContent, title)
+        await supabaseClient
+          .from('ai_roadmaps')
+          .update({ content: repaired })
+          .eq('id', roadmap_id)
+
+        return new Response(JSON.stringify(repaired), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      return new Response(JSON.stringify(existingContent), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // 2. If it doesn't exist, call Gemini API to generate the curriculum
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
     if (!GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY is not set")
     }
 
-    // Notice we are explicitly asking Gemini to prioritize YouTube videos!
     const prompt = `You are an expert AI curriculum designer. Build a progressive 4-5 step learning roadmap for the topic: "${title}". 
 Description context: ${description || 'N/A'}.
 
@@ -53,7 +74,7 @@ Return ONLY a valid JSON array of objects, with no markdown formatting or extra 
 - "title": Title of the topic
 - "diff": "Beginner", "Intermediate", or "Advanced"
 - "desc": One short, punchy sentence explaining what they will learn.
-- "resource": A real URL to a high-quality YouTube video or canonical guide for this exact topic.`
+- "resource": A YouTube search URL to find the best tutorials for this topic. NEVER guess a direct video URL (like watch?v=) because it will be a fake link. ALWAYS use the search format: "https://www.youtube.com/results?search_query=Andrej+Karpathy+Neural+Networks" (replace spaces with +).`
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
@@ -61,22 +82,22 @@ Return ONLY a valid JSON array of objects, with no markdown formatting or extra 
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-           temperature: 0.2, // Low temperature for factual consistency
+           temperature: 0.2,
            responseMimeType: "application/json",
         }
       })
     })
 
     const geminiData = await response.json()
-    let generatedText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+    const generatedText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
     
     if (!generatedText) {
       throw new Error("Failed to generate content from Gemini")
     }
 
-    const roadmapContent = JSON.parse(generatedText)
+    const rawContent = JSON.parse(generatedText) as RoadmapStep[]
+    const roadmapContent = sanitizeRoadmapContent(rawContent, title)
 
-    // 3. Save to database permanently
     const { error: insertError } = await supabaseClient
       .from('ai_roadmaps')
       .upsert({
