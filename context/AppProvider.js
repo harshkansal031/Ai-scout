@@ -28,6 +28,7 @@ export function AppProvider({ children }) {
   const [historyItems, setHistoryItems] = useState([]);
   const [feed, setFeed] = useState([]);
   const [feedType, setFeedType] = useState('news');
+  const [roadmaps, setRoadmaps] = useState([]);
   const [exploreResults, setExploreResults] = useState(EMPTY_EXPLORE);
   const [notificationPreferences, setNotificationPreferences] = useState({
     dailyTopic: true,
@@ -81,10 +82,11 @@ export function AppProvider({ children }) {
     setDataLoading(true);
     setError('');
     try {
-      const [bootstrap, dailyTopic, initialFeed] = await Promise.all([
+      const [bootstrap, dailyTopic, initialFeed, initialRoadmaps] = await Promise.all([
         backend.getBootstrapData(userId),
         backend.fetchDailyTopic(),
         backend.fetchFeed('news'),
+        backend.fetchRoadmaps().catch(() => []),
       ]);
 
       setProfile(bootstrap.profile);
@@ -96,6 +98,7 @@ export function AppProvider({ children }) {
       setNotificationPreferences(bootstrap.notificationPreferences ?? notificationPreferences);
       setFeed(initialFeed);
       setFeedType('news');
+      setRoadmaps(initialRoadmaps);
       setExploreResults(EMPTY_EXPLORE);
 
       // Fire off a background ingest to scrape platforms automatically on app open
@@ -315,6 +318,21 @@ export function AppProvider({ children }) {
     }
   }
 
+  async function generateRoadmap(fieldId, roadmapId, title, description) {
+    setDataLoading(true);
+    try {
+      const newRoadmapContent = await backend.generateRoadmap(fieldId, roadmapId, title, description);
+      const updatedRoadmaps = await backend.fetchRoadmaps();
+      setRoadmaps(updatedRoadmaps);
+      return newRoadmapContent;
+    } catch (e) {
+      setError(e.message);
+      return null;
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
   async function sendChatMessage(message, pageContext) {
     if (!session?.user?.id) {
       throw new Error('Sign in to use the AI assistant.');
@@ -373,6 +391,7 @@ export function AppProvider({ children }) {
       historyItems,
       feed,
       feedType,
+      roadmaps,
       exploreResults,
       notificationPreferences,
       themeMode: profile?.themeMode ?? 'light',
@@ -389,6 +408,7 @@ export function AppProvider({ children }) {
       sendChatMessage,
       trackItemClick,
       trackSearch,
+      generateRoadmap,
     }),
     [
       authLoading,

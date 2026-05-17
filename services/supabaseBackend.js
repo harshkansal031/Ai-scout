@@ -204,10 +204,48 @@ export const supabaseBackend = {
     return (data ?? []).map(normalizeContentItem);
   },
 
+  async fetchRoadmaps() {
+    const supabase = getClient();
+    const [fieldsRes, roadmapsRes] = await Promise.all([
+      supabase.from('ai_fields').select('*').order('sort_order', { ascending: true }),
+      supabase.from('ai_roadmaps').select('*')
+    ]);
+
+    if (fieldsRes.error) throw fieldsRes.error;
+    if (roadmapsRes.error) throw roadmapsRes.error;
+
+    return fieldsRes.data.map((f) => ({
+      id: f.id,
+      title: f.title,
+      icon: f.icon,
+      color: f.color,
+      desc: f.description,
+      children: roadmapsRes.data
+        .filter((r) => r.field_id === f.id)
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          desc: r.description,
+          children: typeof r.content === 'string' ? JSON.parse(r.content) : r.content
+        }))
+    }));
+  },
+
   async triggerIngestFeed() {
     const supabase = getClient();
     const { data, error } = await supabase.functions.invoke('ingest-feed', {
       method: 'POST',
+    });
+    if (error) {
+      throw error;
+    }
+    return data;
+  },
+
+  async generateRoadmap(fieldId, roadmapId, title, description) {
+    const supabase = getClient();
+    const { data, error } = await supabase.functions.invoke('generate-roadmap', {
+      body: { field_id: fieldId, roadmap_id: roadmapId, title, description }
     });
     if (error) {
       throw error;

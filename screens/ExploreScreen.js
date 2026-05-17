@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Linking, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -7,156 +7,168 @@ import FloatingChat from '../components/FloatingChat';
 import { useApp } from '../context/AppProvider';
 import { DARK, LIGHT, RADIUS, SPACING } from '../constants/theme';
 
-const FILTER_CHIPS = ['All', 'Topics', 'Papers', 'Resources', 'Tools'];
-
 function usePalette(themeMode) {
   return themeMode === 'dark' ? DARK : LIGHT;
 }
 
 export default function ExploreScreen({ navigation }) {
-  const { themeMode, exploreResults, searchExplore, toggleBookmark, savedItems } = useApp();
+  const { themeMode, roadmaps } = useApp();
   const colors = usePalette(themeMode);
-  const [searchQuery, setSearchQuery] = useState('rag agents');
-  const [activeFilter, setActiveFilter] = useState(0);
-  const savedIds = new Set(savedItems.map((item) => item.id));
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Navigation Stack for Drill-Down
+  const [stack, setStack] = useState([{ level: 'root', data: roadmaps || [], title: 'Explore AI', id: 'root' }]);
+
+  // Sync stack when roadmaps load dynamically
+  useEffect(() => {
+    if (stack.length === 1 && roadmaps && roadmaps.length > 0) {
+      setStack([{ level: 'root', data: roadmaps, title: 'Explore AI', id: 'root' }]);
+    }
+  }, [roadmaps]);
 
   useEffect(() => {
-    searchExplore(searchQuery);
-  }, []);
+    const onBackPress = () => {
+      if (stack.length > 1) {
+        setStack(prev => prev.slice(0, -1));
+        return true;
+      }
+      return false;
+    };
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [stack]);
 
-  const showTopics = activeFilter === 0 || activeFilter === 1;
-  const showPapers = activeFilter === 0 || activeFilter === 2;
-  const showResources = activeFilter === 0 || activeFilter === 3;
-  const showTools = activeFilter === 0 || activeFilter === 4;
+  const currentView = stack[stack.length - 1];
 
-  async function handleSearch() {
-    await searchExplore(searchQuery || 'ai agents');
-  }
+  const pushStack = (level, data, title, id) => {
+    setStack([...stack, { level, data, title, id }]);
+  };
+
+  const popStack = () => {
+    if (stack.length > 1) {
+      setStack(stack.slice(0, -1));
+    }
+  };
+
+  const handleSearch = () => {
+    console.log("Super Search triggered:", searchQuery);
+  };
+
+  const handleSubfieldClick = (sub) => {
+    pushStack('roadmap', sub.children || [], sub.title, sub.id);
+  };
+
+  const renderRoot = () => (
+    <View style={styles.grid}>
+      {currentView.data.map((field) => (
+        <TouchableOpacity 
+          key={field.id} 
+          style={[styles.fieldCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => pushStack('subfield', field.children, field.title, field.id)}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.iconBox, { backgroundColor: `${field.color}20` }]}>
+            <Ionicons name={field.icon} size={28} color={field.color} />
+          </View>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>{field.title}</Text>
+          <Text style={[styles.cardDesc, { color: colors.textMuted }]}>{field.desc}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  const renderSubfields = () => (
+    <View style={styles.list}>
+      {currentView.data.map((sub) => (
+        <TouchableOpacity 
+          key={sub.id} 
+          style={[styles.listCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => handleSubfieldClick(sub)}
+          activeOpacity={0.8}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.listTitle, { color: colors.text }]}>{sub.title}</Text>
+            <Text style={[styles.cardDesc, { color: colors.textMuted }]}>{sub.desc}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
+  const renderRoadmap = () => (
+    <View style={styles.roadmap}>
+      {currentView.data.map((topic, index) => {
+        const isLast = index === currentView.data.length - 1;
+        const diffColor = topic.diff === 'Beginner' ? colors.success : (topic.diff === 'Intermediate' ? colors.warning : colors.error);
+        
+        return (
+          <View key={topic.id} style={styles.roadmapItem}>
+            <View style={styles.roadmapTimeline}>
+              <View style={[styles.timelineDot, { borderColor: diffColor, backgroundColor: colors.surface }]} />
+              {!isLast && <View style={[styles.timelineLine, { backgroundColor: colors.border }]} />}
+            </View>
+            <TouchableOpacity 
+              style={[styles.roadmapCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              activeOpacity={0.8}
+              onPress={() => topic.resource && Linking.openURL(topic.resource)}
+            >
+              <View style={styles.roadmapHeader}>
+                <Text style={[styles.roadmapTitle, { color: colors.text }]}>{topic.title}</Text>
+                <View style={[styles.diffBadge, { backgroundColor: `${diffColor}20` }]}>
+                  <Text style={[styles.diffText, { color: diffColor }]}>{topic.diff}</Text>
+                </View>
+              </View>
+              <Text style={[styles.cardDesc, { color: colors.textMuted, marginTop: 6 }]}>{topic.desc}</Text>
+              
+              <View style={styles.resourceBtn}>
+                <Ionicons name="logo-youtube" size={16} color="#FF0000" />
+                <Text style={[styles.resourceText, { color: colors.primary }]}>Study Resource</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+    </View>
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+      
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
-      </View>
-
-      <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Ionicons name="search-outline" size={20} color={colors.textMuted} />
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search topics, papers, tools..."
-          placeholderTextColor={colors.textMuted}
-          style={[styles.searchInput, { color: colors.text }]}
-          returnKeyType="search"
-          onSubmitEditing={handleSearch}
-        />
-        <TouchableOpacity onPress={handleSearch}>
-          <Ionicons name="arrow-forward-circle" size={22} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersRow} style={styles.filtersScroll}>
-        {FILTER_CHIPS.map((chip, index) => (
-          <TouchableOpacity
-            key={chip}
-            onPress={() => setActiveFilter(index)}
-            style={[styles.filterChip, { backgroundColor: colors.surface, borderColor: colors.border }, activeFilter === index && { backgroundColor: colors.success, borderColor: colors.success }]}
-          >
-            <Text style={[styles.filterText, { color: activeFilter === index ? '#FFFFFF' : colors.textSub }]}>{chip}</Text>
+        {stack.length > 1 && (
+          <TouchableOpacity onPress={popStack} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+        )}
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+          {currentView.title}
+        </Text>
+      </View>
+
+      {stack.length === 1 && (
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Ask anything about AI..."
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
+            returnKeyType="search"
+            onSubmitEditing={handleSearch}
+          />
+          <TouchableOpacity onPress={handleSearch}>
+            <Ionicons name="arrow-forward-circle" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {showTopics ? (
-          <Section title="Topics" colors={colors}>
-            {exploreResults.topics.map((topic) => (
-              <TouchableOpacity key={topic.id} style={[styles.topicCard, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => navigation.navigate('Lecture', { topic })}>
-                <View style={[styles.topicIconContainer, { backgroundColor: colors.primaryLight }]}>
-                  <Ionicons name="bulb-outline" size={20} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.topicTitle, { color: colors.text }]}>{topic.title}</Text>
-                  <Text style={[styles.topicMeta, { color: colors.textMuted }]}>{topic.duration ?? 30} min</Text>
-                </View>
-                <TouchableOpacity style={[styles.beginBtn, { backgroundColor: colors.success }]} onPress={() => navigation.navigate('Lecture', { topic })}>
-                  <Text style={styles.beginBtnText}>Begin</Text>
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </Section>
-        ) : null}
-
-        {showPapers ? (
-          <Section title="Papers" colors={colors}>
-            {exploreResults.papers.map((paper) => (
-              <TouchableOpacity
-                key={paper.id}
-                activeOpacity={0.7}
-                onPress={() => paper.sourceUrl && Linking.openURL(paper.sourceUrl)}
-                style={[styles.paperCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                <View style={styles.arxivBadge}>
-                  <Text style={styles.arxivText}>Paper</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.paperTitle, { color: colors.text }]}>{paper.title}</Text>
-                  <Text style={[styles.topicMeta, { color: colors.textMuted }]}>{paper.sourceName || paper.category}</Text>
-                </View>
-                <TouchableOpacity onPress={() => toggleBookmark(paper)}>
-                  <Ionicons name={savedIds.has(paper.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(paper.id) ? colors.primary : colors.textMuted} />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </Section>
-        ) : null}
-
-        {showResources ? (
-          <Section title="Resources" colors={colors}>
-            {exploreResults.resources.map((resource) => (
-              <TouchableOpacity
-                key={resource.id}
-                activeOpacity={0.7}
-                onPress={() => resource.sourceUrl && Linking.openURL(resource.sourceUrl)}
-                style={[styles.paperCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                <View style={[styles.topicIconContainer, { backgroundColor: colors.warningLight }]}>
-                  <Ionicons name="library-outline" size={18} color={colors.warning} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.paperTitle, { color: colors.text }]}>{resource.title}</Text>
-                  <Text style={[styles.topicMeta, { color: colors.textMuted }]}>{resource.summary}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </Section>
-        ) : null}
-
-        {showTools ? (
-          <Section title="Tools" colors={colors}>
-            {exploreResults.tools.map((tool) => (
-              <TouchableOpacity
-                key={tool.id}
-                activeOpacity={0.7}
-                onPress={() => tool.sourceUrl && Linking.openURL(tool.sourceUrl)}
-                style={[styles.toolCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                <View style={[styles.topicIconContainer, { backgroundColor: colors.primaryLight }]}>
-                  <Ionicons name="construct-outline" size={20} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.topicTitle, { color: colors.text }]}>{tool.title}</Text>
-                  <Text style={[styles.topicMeta, { color: colors.textMuted }]}>{tool.summary}</Text>
-                </View>
-                <TouchableOpacity onPress={() => toggleBookmark(tool)}>
-                  <Ionicons name={savedIds.has(tool.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(tool.id) ? colors.primary : colors.textMuted} />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            ))}
-          </Section>
-        ) : null}
-
+        {currentView.level === 'root' && renderRoot()}
+        {currentView.level === 'subfield' && renderSubfields()}
+        {currentView.level === 'roadmap' && renderRoadmap()}
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -165,33 +177,28 @@ export default function ExploreScreen({ navigation }) {
   );
 }
 
-function Section({ title, colors, children }) {
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: SPACING.base,
     paddingTop: 8,
     paddingBottom: 12,
   },
+  backBtn: {
+    marginRight: 12,
+  },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '800',
+    flex: 1,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginHorizontal: SPACING.base,
-    marginBottom: 14,
+    marginBottom: 20,
     borderRadius: RADIUS.full,
     paddingHorizontal: 16,
     paddingVertical: 13,
@@ -202,108 +209,120 @@ const styles = StyleSheet.create({
     fontSize: 15,
     padding: 0,
   },
-  filtersScroll: {
-    marginBottom: 16,
-  },
-  filtersRow: {
-    paddingHorizontal: SPACING.base,
-    gap: 8,
-    flexDirection: 'row',
-  },
-  filterChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-    borderWidth: 1.5,
-  },
-  filterText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   scrollContent: {
     paddingHorizontal: SPACING.base,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
+  grid: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  topicCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
+  fieldCard: {
+    width: '48%',
     borderRadius: RADIUS.lg,
-    padding: 14,
-    marginBottom: 8,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
+    height: 180,
   },
-  topicIconContainer: {
+  iconBox: {
     width: 50,
     height: 50,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 12,
   },
-  topicTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 2,
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 6,
   },
-  topicMeta: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  beginBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-  },
-  beginBtnText: {
-    color: '#FFFFFF',
+  cardDesc: {
     fontSize: 13,
-    fontWeight: '700',
+    lineHeight: 18,
   },
-  paperCard: {
+  list: {
+    gap: 12,
+  },
+  listCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    padding: 18,
     borderRadius: RADIUS.lg,
-    padding: 14,
-    marginBottom: 8,
     borderWidth: 1,
   },
-  arxivBadge: {
-    backgroundColor: '#7F1D1D',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADIUS.sm,
-  },
-  arxivText: {
-    color: '#FCA5A5',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  paperTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
+  listTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  toolCard: {
+  roadmap: {
+    marginTop: 8,
+  },
+  roadmapItem: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  roadmapTimeline: {
+    width: 30,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 3,
+    zIndex: 2,
+    marginTop: 20,
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    position: 'absolute',
+    top: 20,
+    bottom: -30,
+    zIndex: 1,
+  },
+  roadmapCard: {
+    flex: 1,
+    borderRadius: RADIUS.lg,
+    padding: 16,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  roadmapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  roadmapTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  diffBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.sm,
+  },
+  diffText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  resourceBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    borderRadius: RADIUS.lg,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(150,150,150,0.2)',
   },
+  resourceText: {
+    fontSize: 13,
+    fontWeight: '700',
+  }
 });

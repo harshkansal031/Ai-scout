@@ -236,6 +236,66 @@ async function fetchHackerNews(): Promise<FeedItem[]> {
   }
 }
 
+// ── Infinite Knowledge Expander ────────────────────────────────────────────────
+async function expandKnowledgeGraph(supabase: any, newItems: FeedItem[]) {
+  if (!newItems || newItems.length === 0) return;
+  
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  if (!GEMINI_API_KEY) return;
+
+  // Grab the top 15 titles to analyze
+  const titles = newItems.slice(0, 15).map(i => i.title).join('\n');
+  
+  const prompt = `You are an AI trend analyzer. Read these recent news headlines and identify the single most important emerging AI subfield, architecture, or tool mentioned (e.g., "Video Generation", "AI Agents", "MoE", "Voice Models"). 
+Headlines:
+${titles}
+
+Return ONLY a valid JSON object with:
+- "title": The name of the topic
+- "desc": A one-sentence description of what it is.
+- "field_id": Categorize it strictly into either "gen-ai", "ml-core", or "agents".`;
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: "application/json" }
+      })
+    });
+    
+    const geminiData = await response.json();
+    const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) return;
+    
+    const topic = JSON.parse(text);
+    if (!topic.title || !topic.field_id) return;
+
+    // Convert title to an ID (slug)
+    const roadmapId = topic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 30);
+    
+    // Check if it already exists
+    const { data: existing } = await supabase.from('ai_roadmaps').select('id').eq('id', roadmapId).maybeSingle();
+    if (existing) return; // We already have a roadmap for this!
+
+    console.log(`[Knowledge Expander] Discovered new topic: ${topic.title}. Generating curriculum...`);
+
+    // We discovered a brand new topic! Wait for the generator to build it.
+    await supabase.functions.invoke('generate-roadmap', {
+      body: { 
+        field_id: topic.field_id, 
+        roadmap_id: roadmapId, 
+        title: topic.title, 
+        description: topic.desc 
+      }
+    });
+
+  } catch (e) {
+    console.error("[Knowledge Expander] Failed:", e);
+  }
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -311,6 +371,9 @@ Deno.serve(async (req) => {
     RSS_SOURCES.forEach((src, i) => {
       breakdown[src.name] = rssResults[i]?.length ?? 0;
     });
+
+    // Run the Infinite Knowledge Expander to detect new topics
+    await expandKnowledgeGraph(supabase, deduplicatedItems);
 
     return Response.json(
       { inserted: deduplicatedItems.length, breakdown },
