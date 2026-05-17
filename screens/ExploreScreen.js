@@ -48,6 +48,9 @@ function slugify(text) {
     .slice(0, 40);
 }
 
+/** Off until Gemini roadmap quota is restored — Explore uses parent-topic content fallback instead. */
+const ENABLE_ON_DEMAND_ROADMAP_GENERATION = false;
+
 export default function ExploreScreen({ navigation }) {
   const { themeMode, roadmaps, generateRoadmap, backend } = useApp();
   const colors = usePalette(themeMode);
@@ -90,8 +93,8 @@ export default function ExploreScreen({ navigation }) {
 
   const currentView = stack[stack.length - 1];
 
-  const pushStack = (level, data, title, id) =>
-    setStack((prev) => [...prev, { level, data, title, id }]);
+  const pushStack = (level, data, title, id, meta) =>
+    setStack((prev) => [...prev, { level, data, title, id, ...(meta !== undefined ? { meta } : {}) }]);
 
   const popStack = () => {
     if (stack.length > 1) setStack((s) => s.slice(0, -1));
@@ -168,9 +171,31 @@ export default function ExploreScreen({ navigation }) {
   }, [backend]);
 
   // ── Subfield / roadmap navigation ─────────────────────────────────────────
+  const openTopicFromParentSubtopic = (parent) => {
+    if (!parent?.title) return;
+    pushStack(
+      'topic-content',
+      {
+        title: parent.title,
+        diff: 'General',
+        desc: parent.desc ?? '',
+        resource: undefined,
+        id: parent.id,
+      },
+      parent.title,
+      parent.id,
+    );
+    loadTopicContent(parent.id, parent.title);
+  };
+
   const handleSubfieldClick = async (sub) => {
     let steps = sub.children || [];
-    if (steps.length === 0 && sub.fieldId && generateRoadmap) {
+    if (
+      ENABLE_ON_DEMAND_ROADMAP_GENERATION &&
+      steps.length === 0 &&
+      sub.fieldId &&
+      generateRoadmap
+    ) {
       setLoadingTopicId(sub.id);
       try {
         const generated = await generateRoadmap(sub.fieldId, sub.id, sub.title, sub.desc);
@@ -179,7 +204,24 @@ export default function ExploreScreen({ navigation }) {
         setLoadingTopicId(null);
       }
     }
-    pushStack('roadmap', steps, sub.title, sub.id);
+
+    const parentMeta = {
+      id: sub.id,
+      title: sub.title,
+      desc: sub.desc ?? '',
+      fieldId: sub.fieldId,
+    };
+
+    // No lesson timeline — skip intermediate screen; land on Latest Content immediately
+    if (!steps.length) {
+      openTopicFromParentSubtopic(parentMeta);
+      return;
+    }
+
+    pushStack('roadmap', steps, sub.title, sub.id, {
+      // ai_roadmaps parent — overview link + roadmap cards
+      parentSubtopic: parentMeta,
+    });
   };
 
   const handleRoadmapCardPress = (topic) => {
@@ -276,13 +318,12 @@ export default function ExploreScreen({ navigation }) {
     </View>
   );
 
-  const renderRoadmap = () => (
-    <View style={styles.roadmap}>
-      {currentView.data.length === 0 && (
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-          Lesson steps are being prepared. Pull back and try again in a moment.
-        </Text>
-      )}
+  const renderRoadmap = () => {
+    const parent = currentView.meta?.parentSubtopic;
+    const hasSteps = currentView.data.length > 0;
+
+    return (
+      <View style={styles.roadmap}>
       {currentView.data.map((topic, index) => {
         const isLast = index === currentView.data.length - 1;
         const diffColor =
@@ -323,8 +364,23 @@ export default function ExploreScreen({ navigation }) {
           </View>
         );
       })}
+      {/* With steps: optional whole-topic shortcut (prefetch topic_content for parent roadmap title/id) */}
+      {hasSteps && Boolean(parent?.title) && (
+        <TouchableOpacity
+          style={[styles.parentOverviewLink, { borderColor: colors.border }]}
+          activeOpacity={0.75}
+          onPress={() => openTopicFromParentSubtopic(parent)}
+        >
+          <Ionicons name="layers-outline" size={18} color={colors.primary} />
+          <Text style={[styles.parentOverviewLinkText, { color: colors.primary }]}>
+            All resources for whole topic ({parent.title})
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      )}
     </View>
-  );
+    );
+  };
 
   const renderTopicContent = () => {
     const topic = topicMetadata || currentView.data || {};
@@ -799,5 +855,20 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     paddingVertical: 32,
     textAlign: 'center',
+  },
+  parentOverviewLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  parentOverviewLinkText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

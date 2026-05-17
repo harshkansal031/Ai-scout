@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import FloatingChat from '../components/FloatingChat';
+import { useNavigation } from '@react-navigation/native';
 import ProgressRing from '../components/ProgressRing';
 import { useApp } from '../context/AppProvider';
 import { DARK, LIGHT, RADIUS, SPACING } from '../constants/theme';
@@ -25,6 +25,7 @@ export default function ProfileScreen() {
     signOut,
   } = useApp();
   const colors = usePalette(themeMode);
+  const navigation = useNavigation();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -51,13 +52,22 @@ export default function ProfileScreen() {
           <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
             <StatCard value={profile?.stats?.topics ?? 0} label="Topics" colors={colors} />
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <StatCard value={savedItems.length} label="Saved" colors={colors} />
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.7} onPress={() => navigation.navigate('SavedContent')}>
+              <StatCard value={savedItems.length} label="Saved" colors={colors} />
+            </TouchableOpacity>
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <StatCard value={profile?.stats?.streak ?? 0} label="Streak" colors={colors} />
           </View>
         </View>
 
         <View style={[styles.sectionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <SettingRow
+            icon="bookmark-outline"
+            label="Saved items & bookmarks"
+            colors={colors}
+            onPress={() => navigation.navigate('SavedContent')}
+          />
+          <Divider colors={colors} />
           <SettingRow
             icon="moon-outline"
             label="Dark mode"
@@ -74,24 +84,6 @@ export default function ProfileScreen() {
             toggle
             value={notificationPreferences.dailyTopic}
             onValueChange={(enabled) => updateNotificationSettings({ dailyTopic: enabled })}
-          />
-          <Divider colors={colors} />
-          <SettingRow
-            icon="newspaper-outline"
-            label="Breaking news alerts"
-            colors={colors}
-            toggle
-            value={notificationPreferences.breakingNews}
-            onValueChange={(enabled) => updateNotificationSettings({ breakingNews: enabled })}
-          />
-          <Divider colors={colors} />
-          <SettingRow
-            icon="document-text-outline"
-            label="Paper alerts"
-            colors={colors}
-            toggle
-            value={notificationPreferences.papers}
-            onValueChange={(enabled) => updateNotificationSettings({ papers: enabled })}
           />
         </View>
 
@@ -114,9 +106,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
         <View style={{ height: 100 }} />
       </ScrollView>
-
-      <FloatingChat isDark={themeMode === 'dark'} pageContext={{ type: 'profile' }} />
-    </SafeAreaView>
+     </SafeAreaView>
   );
 }
 
@@ -133,9 +123,10 @@ function Divider({ colors }) {
   return <View style={[styles.settingRowDivider, { backgroundColor: colors.border }]} />;
 }
 
-function SettingRow({ icon, label, colors, toggle, value, onValueChange }) {
+function SettingRow({ icon, label, colors, toggle, value, onValueChange, onPress }) {
+  const Container = onPress ? TouchableOpacity : View;
   return (
-    <View style={styles.settingRow}>
+    <Container style={styles.settingRow} activeOpacity={0.7} onPress={onPress}>
       <View style={[styles.settingIcon, { backgroundColor: colors.primaryLight }]}>
         <Ionicons name={icon} size={18} color={colors.primary} />
       </View>
@@ -143,8 +134,10 @@ function SettingRow({ icon, label, colors, toggle, value, onValueChange }) {
       <View style={{ flex: 1 }} />
       {toggle ? (
         <Switch value={value} onValueChange={onValueChange} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFFFFF" />
-      ) : null}
-    </View>
+      ) : (
+        onPress && <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      )}
+    </Container>
   );
 }
 

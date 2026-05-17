@@ -12,11 +12,28 @@ import {
   TouchableOpacity,
   View,
   Switch,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CHAT_SUGGESTIONS } from '../constants/mockData';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppProvider';
+ 
+function CustomRobotIcon({ size = 'medium' }) {
+  const isSmall = size === 'small';
+  const dimension = isSmall ? 22 : 100;
+  
+  return (
+    <Image
+      source={require('../constants/chatbot-icon.png')}
+      style={{
+        width: dimension,
+        height: dimension,
+        resizeMode: 'contain',
+      }}
+    />
+  );
+}
 
 function ChatMessage({ role, text }) {
   const isUser = role === 'user';
@@ -24,7 +41,7 @@ function ChatMessage({ role, text }) {
     <View style={[styles.msgRow, isUser ? styles.userRow : styles.botRow]}>
       {!isUser ? (
         <View style={styles.botAvatar}>
-          <Ionicons name="hardware-chip-outline" size={14} color="#2563EB" />
+          <CustomRobotIcon size="small" />
         </View>
       ) : null}
       <View style={[styles.msgBubble, isUser ? styles.userBubble : styles.botBubble]}>
@@ -42,9 +59,90 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
   const [isTyping, setIsTyping] = useState(false);
   const [useContext, setUseContext] = useState(!!pageContext);
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const hoverAnim = useRef(new Animated.Value(0)).current;
+  const wiggleAnim = useRef(new Animated.Value(0)).current;
+  const tiltAnim = useRef(new Animated.Value(0)).current; // Clockwise/anticlockwise slow rocking
   const scrollRef = useRef(null);
   const insets = useSafeAreaInsets();
   const activeStream = useRef(null);
+
+  // 1. Idle Floating & Slow Clockwise/Anticlockwise Rocking Loop
+  useEffect(() => {
+    const float = Animated.loop(
+      Animated.sequence([
+        Animated.timing(hoverAnim, {
+          toValue: -6,
+          duration: 1100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(hoverAnim, {
+          toValue: 0,
+          duration: 1100,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const tilt = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tiltAnim, {
+          toValue: 1, // Clockwise tilt
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tiltAnim, {
+          toValue: -1, // Anticlockwise tilt
+          duration: 2400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(tiltAnim, {
+          toValue: 0, // Center
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    float.start();
+    tilt.start();
+
+    return () => {
+      float.stop();
+      tilt.stop();
+    };
+  }, []);
+
+  // 2. Active Talking Wiggle Animation Loop when bot isTyping
+  useEffect(() => {
+    let wiggleLoop = null;
+    if (isTyping) {
+      wiggleLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(wiggleAnim, {
+            toValue: -4,
+            duration: 120,
+            useNativeDriver: true,
+          }),
+          Animated.timing(wiggleAnim, {
+            toValue: 4,
+            duration: 240,
+            useNativeDriver: true,
+          }),
+          Animated.timing(wiggleAnim, {
+            toValue: 0,
+            duration: 120,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      wiggleLoop.start();
+    } else {
+      wiggleAnim.setValue(0);
+    }
+    return () => {
+      if (wiggleLoop) wiggleLoop.stop();
+    };
+  }, [isTyping]);
 
   useEffect(() => {
     return () => {
@@ -123,13 +221,34 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
     }
   }, [input, pageContext, sendChatMessage, useContext]);
 
+  const rotateVal = isTyping
+    ? wiggleAnim.interpolate({
+        inputRange: [-4, 4],
+        outputRange: ['-6deg', '6deg'],
+      })
+    : tiltAnim.interpolate({
+        inputRange: [-1, 1],
+        outputRange: ['-6deg', '6deg'],
+      });
+
   return (
     <>
-      <Animated.View style={[styles.fabContainer, { transform: [{ scale: scaleAnim }], bottom: 90 + insets.bottom }]}>
+      <Animated.View
+        style={[
+          styles.fabContainer,
+          {
+            bottom: 15 + insets.bottom,
+            transform: [
+              { scale: scaleAnim },
+              { translateY: hoverAnim },
+              { rotate: rotateVal },
+            ],
+          },
+        ]}
+      >
         <TouchableOpacity onPress={handleOpen} style={[styles.fab, isDark ? styles.fabDark : styles.fabLight]}>
           <View style={styles.fabInner}>
-            <Ionicons name="hardware-chip-outline" size={22} color="#FFFFFF" />
-            <View style={styles.fabDot} />
+            <CustomRobotIcon />
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -141,7 +260,7 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
             <View style={styles.sheetHeader}>
               <View style={styles.sheetTitleRow}>
                 <View style={styles.sheetIcon}>
-                  <Ionicons name="hardware-chip-outline" size={16} color="#2563EB" />
+                  <CustomRobotIcon size="small" />
                 </View>
                 <View style={styles.titleTextWrapper}>
                   <Text style={styles.sheetTitle}>Ask AI</Text>
@@ -178,7 +297,7 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
               {isTyping ? (
                 <View style={[styles.msgRow, styles.botRow]}>
                   <View style={styles.botAvatar}>
-                    <Ionicons name="hardware-chip-outline" size={14} color="#2563EB" />
+                    <CustomRobotIcon size="small" />
                   </View>
                   <View style={[styles.msgBubble, styles.botBubble]}>
                     <Text style={[styles.msgText, styles.botText]}>Thinking...</Text>
@@ -221,27 +340,21 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
 const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
-    right: 20,
+    right: 8,
     zIndex: 100,
   },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 104,
+    height: 104,
+    borderRadius: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   fabLight: {
-    backgroundColor: '#2563EB',
-    shadowColor: '#2563EB',
+    backgroundColor: 'transparent',
   },
   fabDark: {
-    backgroundColor: '#1D4ED8',
-    shadowColor: '#3B82F6',
+    backgroundColor: 'transparent',
   },
   fabInner: {
     alignItems: 'center',
@@ -295,10 +408,9 @@ const styles = StyleSheet.create({
   sheetIcon: {
     width: 30,
     height: 30,
-    borderRadius: 15,
-    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   sheetTitle: {
     fontSize: 17,
@@ -351,10 +463,9 @@ const styles = StyleSheet.create({
   botAvatar: {
     width: 28,
     height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   msgBubble: {
     maxWidth: '78%',
@@ -430,5 +541,68 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.4,
+  },
+  robotHead: {
+    width: 28,
+    height: 22,
+    borderRadius: 7,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 1,
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  robotEarLeft: {
+    position: 'absolute',
+    left: -2,
+    width: 2,
+    height: 6,
+    borderTopLeftRadius: 1.5,
+    borderBottomLeftRadius: 1.5,
+    backgroundColor: '#94A3B8',
+  },
+  robotEarRight: {
+    position: 'absolute',
+    right: -2,
+    width: 2,
+    height: 6,
+    borderTopRightRadius: 1.5,
+    borderBottomRightRadius: 1.5,
+    backgroundColor: '#94A3B8',
+  },
+  robotFaceScreen: {
+    width: 20,
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 1.5,
+  },
+  robotEyesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: 12,
+    marginBottom: 0.5,
+  },
+  robotEye: {
+    width: 4,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: '#38BDF8',
+  },
+  robotMouth: {
+    width: 3,
+    height: 2,
+    borderBottomLeftRadius: 1,
+    borderBottomRightRadius: 1,
+    backgroundColor: '#38BDF8',
   },
 });

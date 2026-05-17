@@ -1,6 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import React from 'react';
-import { ActivityIndicator, Platform, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Text, View, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,6 +13,7 @@ import LectureScreen from './screens/LectureScreen';
 import NewsScreen from './screens/NewsScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import SavedScreen from './screens/SavedScreen';
+import UpcomingScreen from './screens/UpcomingScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import AuthScreen from './screens/AuthScreen';
 
@@ -24,7 +25,7 @@ const RootStack = createNativeStackNavigator();
 const TodayStack = createNativeStackNavigator();
 const NewsStack = createNativeStackNavigator();
 const ExploreStack = createNativeStackNavigator();
-const SavedStack = createNativeStackNavigator();
+const UpcomingStack = createNativeStackNavigator();
 const ProfileStack = createNativeStackNavigator();
 
 function TabLabel({ label, focused, color }) {
@@ -69,12 +70,12 @@ function ExploreStackNav() {
   );
 }
 
-function SavedStackNav() {
+function UpcomingStackNav() {
   return (
-    <SavedStack.Navigator screenOptions={{ headerShown: false }}>
-      <SavedStack.Screen name="SavedHome" component={SavedScreen} />
-      <SavedStack.Screen name="Lecture" component={LectureScreen} />
-    </SavedStack.Navigator>
+    <UpcomingStack.Navigator screenOptions={{ headerShown: false }}>
+      <UpcomingStack.Screen name="UpcomingHome" component={UpcomingScreen} />
+      <UpcomingStack.Screen name="Lecture" component={LectureScreen} />
+    </UpcomingStack.Navigator>
   );
 }
 
@@ -82,84 +83,104 @@ function ProfileStackNav() {
   return (
     <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
       <ProfileStack.Screen name="ProfileHome" component={ProfileScreen} />
+      <ProfileStack.Screen name="SavedContent" component={SavedScreen} />
     </ProfileStack.Navigator>
   );
 }
 
+const PAGES = [
+  { name: 'Today', component: TodayScreen, iconActive: 'home', iconInactive: 'home-outline' },
+  { name: 'News', component: NewsScreen, iconActive: 'newspaper', iconInactive: 'newspaper-outline' },
+  { name: 'Explore', component: ExploreScreen, iconActive: 'search', iconInactive: 'search-outline' },
+  { name: 'Upcoming', component: UpcomingScreen, iconActive: 'calendar', iconInactive: 'calendar-outline' },
+  { name: 'Profile', component: ProfileScreen, iconActive: 'person', iconInactive: 'person-outline' },
+];
+
 function MainTabs() {
   const { themeMode } = useApp();
   const theme = themeMode === 'dark' ? DARK : LIGHT;
+  const { width } = useWindowDimensions();
+  
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const scrollViewRef = React.useRef(null);
+
+  const handleScroll = (event) => {
+    const xOffset = event.nativeEvent.contentOffset.x;
+    const index = Math.round(xOffset / width);
+    if (index !== activeIndex && index >= 0 && index < PAGES.length) {
+      setActiveIndex(index);
+    }
+  };
+
+  const handleTabPress = (index) => {
+    setActiveIndex(index);
+    scrollViewRef.current?.scrollTo({ x: index * width, animated: false });
+  };
 
   return (
-    <Tab.Navigator
-      initialRouteName="Today"
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        scrollEnabled={false}
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={Platform.OS === 'android'}
+        style={{ flex: 1 }}
+      >
+        {PAGES.map((page, index) => {
+          const PageComponent = page.component;
+          return (
+            <View key={page.name} style={{ width, flex: 1 }}>
+              <PageComponent />
+            </View>
+          );
+        })}
+      </ScrollView>
+
+      {/* Premium glassmorphic style bottom tab bar */}
+      <View
+        style={{
+          flexDirection: 'row',
           backgroundColor: theme.tabBar,
           borderTopColor: theme.tabBorder,
           borderTopWidth: 1,
           height: Platform.OS === 'ios' ? 82 : 64,
           paddingBottom: Platform.OS === 'ios' ? 24 : 8,
           paddingTop: 8,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textMuted,
-      }}
-    >
-      <Tab.Screen
-        name="Today"
-        component={TodayStackNav}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
-          ),
-          tabBarLabel: ({ color, focused }) => <TabLabel label="Today" focused={focused} color={color} />,
+          alignItems: 'center',
+          justifyContent: 'space-around',
         }}
-      />
-      <Tab.Screen
-        name="News"
-        component={NewsStackNav}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'newspaper' : 'newspaper-outline'} size={22} color={color} />
-          ),
-          tabBarLabel: ({ color, focused }) => <TabLabel label="News" focused={focused} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Explore"
-        component={ExploreStackNav}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'search' : 'search-outline'} size={22} color={color} />
-          ),
-          tabBarLabel: ({ color, focused }) => <TabLabel label="Explore" focused={focused} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Saved"
-        component={SavedStackNav}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'bookmark' : 'bookmark-outline'} size={22} color={color} />
-          ),
-          tabBarLabel: ({ color, focused }) => <TabLabel label="Saved" focused={focused} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileStackNav}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
-          ),
-          tabBarLabel: ({ color, focused }) => <TabLabel label="Profile" focused={focused} color={color} />,
-        }}
-      />
-    </Tab.Navigator>
+      >
+        {PAGES.map((page, index) => {
+          const isActive = activeIndex === index;
+          const tintColor = isActive ? theme.primary : theme.textMuted;
+          
+          return (
+            <TouchableOpacity
+              key={page.name}
+              onPress={() => handleTabPress(index)}
+              style={{
+                alignItems: 'center',
+                justifyContent: 'center',
+                flex: 1,
+                height: '100%',
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isActive ? page.iconActive : page.iconInactive}
+                size={22}
+                color={tintColor}
+              />
+              <TabLabel label={page.name} focused={isActive} color={tintColor} />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -181,7 +202,11 @@ function RootNavigation() {
     <NavigationContainer>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {session?.user ? (
-          <RootStack.Screen name="AppTabs" component={MainTabs} />
+          <>
+            <RootStack.Screen name="AppTabs" component={MainTabs} />
+            <RootStack.Screen name="Lecture" component={LectureScreen} />
+            <RootStack.Screen name="SavedContent" component={SavedScreen} />
+          </>
         ) : (
           <RootStack.Screen name="Auth" component={AuthScreen} />
         )}

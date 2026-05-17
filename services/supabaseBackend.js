@@ -643,4 +643,67 @@ export const supabaseBackend = {
 
     return data;
   },
+
+  async fetchUpcomingEvents(userId) {
+    const supabase = getClient();
+    const [eventsRes, remindersRes] = await Promise.all([
+      supabase
+        .from('upcoming_events')
+        .select('*')
+        .order('event_date', { ascending: true }),
+      userId 
+        ? supabase.from('event_reminders').select('event_id').eq('user_id', userId)
+        : Promise.resolve({ data: [] })
+    ]);
+
+    if (eventsRes.error) throw eventsRes.error;
+    if (remindersRes.error) throw remindersRes.error;
+
+    const reminderIds = new Set((remindersRes.data ?? []).map(r => r.event_id));
+
+    return (eventsRes.data ?? []).map(event => ({
+      id: event.id,
+      title: event.title,
+      description: event.description,
+      eventDate: event.event_date,
+      location: event.location,
+      organizer: event.organizer,
+      category: event.category,
+      badgeStatus: event.badge_status,
+      attendeesCount: event.attendees_count,
+      isReminderSet: reminderIds.has(event.id),
+    }));
+  },
+
+  async toggleEventReminder(userId, eventId) {
+    if (!userId) throw new Error('User must be logged in to set reminders.');
+    const supabase = getClient();
+    
+    const { data: existing, error: findError } = await supabase
+       .from('event_reminders')
+       .select('*')
+       .eq('user_id', userId)
+       .eq('event_id', eventId)
+       .maybeSingle();
+       
+    if (findError) throw findError;
+     
+    if (existing) {
+      const { error: deleteError } = await supabase
+        .from('event_reminders')
+        .delete()
+        .eq('user_id', userId)
+        .eq('event_id', eventId);
+         
+      if (deleteError) throw deleteError;
+      return false;
+    } else {
+      const { error: insertError } = await supabase
+        .from('event_reminders')
+        .insert({ user_id: userId, event_id: eventId });
+         
+      if (insertError) throw insertError;
+      return true;
+    }
+  },
 };

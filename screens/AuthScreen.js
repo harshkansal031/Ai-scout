@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -7,6 +8,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -56,8 +58,15 @@ export default function AuthScreen() {
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <LinearGradient
           colors={['#080B14', '#10172A', '#0F1D3F']}
           style={styles.hero}
@@ -65,7 +74,10 @@ export default function AuthScreen() {
           end={{ x: 1, y: 1 }}
         >
           <View style={styles.logoCircle}>
-            <Ionicons name="hardware-chip" size={26} color="#FFFFFF" />
+            <Image 
+              source={require('../constants/chatbot-icon.png')} 
+              style={{ width: 44, height: 44, resizeMode: 'contain' }} 
+            />
           </View>
           <Text style={styles.heroTitle}>AI Scout</Text>
           <Text style={styles.heroSubtitle}>
@@ -78,7 +90,7 @@ export default function AuthScreen() {
           </View>
         </LinearGradient>
 
-        <View style={styles.card}>
+        <View style={[styles.card, { flexGrow: 1 }]}>
           <View style={styles.tabRow}>
             {TABS.map((tab, index) => (
               <TouchableOpacity
@@ -127,6 +139,7 @@ export default function AuthScreen() {
             </View>
           ) : null}
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

@@ -20,11 +20,11 @@
       },
       "package": "com.aiscout.app"
     },
-    "web": {
-    },
+    "web": {},
     "plugins": [
       "expo-font",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-web-browser"
     ],
     "extra": {
       "appEnv": "development",

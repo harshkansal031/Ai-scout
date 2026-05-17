@@ -32,6 +32,17 @@ function slugify(url: string): string {
   return url.replace(/[^a-z0-9]/gi, '-').toLowerCase().slice(-60);
 }
 
+function sanitizeImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
 function getSmartTags(title: string, summary: string, sourceTags: string[]): string[] {
   const tags = new Set([...sourceTags]);
   const text = `${title} ${summary}`.toLowerCase();
@@ -49,6 +60,76 @@ function getSmartTags(title: string, summary: string, sourceTags: string[]): str
   }
 
   return Array.from(tags);
+}
+
+async function resolveAndValidateUrl(url: string): Promise<{ finalUrl: string; ogImageUrl: string | null; isValid: boolean }> {
+  let ogImageUrl: string | null = null;
+  try {
+    const cleanUrl = url.trim().replace(/\s+/g, '');
+    const response = await fetch(cleanUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(3500),
+    });
+
+    if (!response.ok) {
+      console.log(`[URL Validator] Rejected non-OK status ${response.status} for ${cleanUrl}`);
+      return { finalUrl: cleanUrl, ogImageUrl: null, isValid: false };
+    }
+
+    const finalUrl = response.url;
+    if (finalUrl.includes('/error_docs/') || finalUrl.includes('forbidden.html') || finalUrl.includes('/404') || finalUrl.includes('access-denied')) {
+      console.log(`[URL Validator] Rejected error-related final URL: ${finalUrl}`);
+      return { finalUrl: cleanUrl, ogImageUrl: null, isValid: false };
+    }
+
+    let canonicalUrl = finalUrl;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      const html = await response.text();
+      
+      // 1. Extract canonical URL
+      const canonicalMatch = html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i) ||
+                             html.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["']canonical["']/i);
+      if (canonicalMatch && canonicalMatch[1]) {
+        const canonical = canonicalMatch[1].trim();
+        if (canonical.startsWith('http')) {
+          canonicalUrl = canonical;
+        }
+      }
+
+      // 2. Extract Open Graph image (og:image)
+      const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
+                           html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i) ||
+                           html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
+      if (ogImageMatch && ogImageMatch[1]) {
+        let imgUrl = ogImageMatch[1].trim();
+        if (imgUrl && !imgUrl.startsWith('http')) {
+          try {
+            const parsedUrl = new URL(canonicalUrl);
+            if (imgUrl.startsWith('/')) {
+              imgUrl = `${parsedUrl.protocol}//${parsedUrl.host}${imgUrl}`;
+            } else {
+              imgUrl = `${parsedUrl.protocol}//${parsedUrl.host}/${imgUrl}`;
+            }
+          } catch {
+            // Ignore
+          }
+        }
+        ogImageUrl = sanitizeImageUrl(imgUrl);
+      }
+    }
+
+    return { finalUrl: canonicalUrl, ogImageUrl, isValid: true };
+  } catch (e) {
+    let fallbackUrl = url.trim().replace(/\s+/g, '');
+    return { finalUrl: fallbackUrl, ogImageUrl: null, isValid: true };
+  }
 }
 
 async function fetchRssFeed(
@@ -69,12 +150,15 @@ async function fetchRssFeed(
     const items: FeedItem[] = [];
     const rawItems = xml.split(/<item[\s>]/i).slice(1);
 
-    for (const raw of rawItems.slice(0, 15)) {
+    for (const raw of rawItems.slice(0, 8)) {
       const title = xmlGet(raw, 'title');
       if (!title) continue;
 
       const link = xmlGet(raw, 'link') || xmlGet(raw, 'guid');
       if (!link || !link.startsWith('http')) continue;
+
+      const { finalUrl, ogImageUrl, isValid } = await resolveAndValidateUrl(link);
+      if (!isValid) continue;
 
       const pubDateStr = xmlGet(raw, 'pubDate') || xmlGet(raw, 'dc:date') || xmlGet(raw, 'updated');
       const pubDate = pubDateStr ? new Date(pubDateStr) : new Date();
@@ -83,17 +167,21 @@ async function fetchRssFeed(
       const summary = description.slice(0, 320) || title;
 
       items.push({
-        id: `rss-${slugify(link)}`,
+        id: `rss-${slugify(finalUrl)}`,
         type,
         title,
         summary,
         source_name: sourceName,
-        source_url: link,
-        canonical_url: link,
+        source_url: finalUrl,
+        canonical_url: finalUrl,
         published_at: pubDate.toISOString(),
-        external_id: link,
+        external_id: finalUrl,
         tags: getSmartTags(title, summary, sourceTags),
-        metadata: { ingested_at: new Date().toISOString(), source: sourceName },
+        metadata: { 
+          ingested_at: new Date().toISOString(), 
+          source: sourceName, 
+          imageUrl: ogImageUrl || undefined 
+        },
       });
     }
 

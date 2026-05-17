@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking, ActivityIndicator } from 'react-native';
+import { FlatList, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking, ActivityIndicator, RefreshControl, Image, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import FloatingChat from '../components/FloatingChat';
+import * as WebBrowser from 'expo-web-browser';
 import { useApp } from '../context/AppProvider';
 import { DARK, LIGHT, RADIUS, SPACING } from '../constants/theme';
+import { buildArticleImageSource } from '../utils/imageUrl';
 
 const TABS = [
   { label: 'Latest', value: 'all' },
@@ -19,33 +21,144 @@ function usePalette(themeMode) {
   return themeMode === 'dark' ? DARK : LIGHT;
 }
 
+function getDomainLogo(url) {
+  try {
+    if (!url) return null;
+    const cleanUrl = url.replace('https://', '').replace('http://', '');
+    const domain = cleanUrl.split('/')[0];
+    return `https://logo.clearbit.com/${domain}?size=120`;
+  } catch (e) {
+    return null;
+  }
+}
+
+function FeaturedThumbnail({ featured, colors }) {
+  const [useFallback, setUseFallback] = React.useState(false);
+  const imageUrl = featured.imageUrl || featured.metadata?.imageUrl || featured.metadata?.image_url || featured.metadata?.ogImage;
+  const logoUrl = !imageUrl && featured.sourceUrl ? getDomainLogo(featured.sourceUrl) : null;
+  const finalUri = imageUrl || logoUrl;
+
+  const imageSource = finalUri && !logoUrl ? buildArticleImageSource(finalUri, featured.sourceUrl) : { uri: finalUri };
+
+  if (finalUri && !useFallback && imageSource) {
+    return (
+      <Image 
+        source={imageSource} 
+        style={[
+          styles.featuredImage, 
+          logoUrl && { resizeMode: 'contain', backgroundColor: '#FFFFFF', padding: 20 }
+        ]} 
+        onError={() => setUseFallback(true)}
+      />
+    );
+  }
+
+  return (
+    <LinearGradient colors={featured.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.featuredImage}>
+      <Ionicons name="sparkles-outline" size={22} color="rgba(255,255,255,0.8)" />
+    </LinearGradient>
+  );
+}
+
+function Thumbnail({ item, colors }) {
+  const [useFallback, setUseFallback] = React.useState(false);
+  const imageUrl = item.imageUrl || item.metadata?.imageUrl || item.metadata?.image_url || item.metadata?.ogImage;
+  const logoUrl = !imageUrl && item.sourceUrl ? getDomainLogo(item.sourceUrl) : null;
+  const finalUri = imageUrl || logoUrl;
+
+  const imageSource = finalUri && !logoUrl ? buildArticleImageSource(finalUri, item.sourceUrl) : { uri: finalUri };
+
+  if (finalUri && !useFallback && imageSource) {
+    return (
+      <Image 
+        source={imageSource} 
+        style={[
+          styles.thumbnail, 
+          logoUrl && { resizeMode: 'contain', backgroundColor: '#FFFFFF', padding: 8 }
+        ]} 
+        onError={() => setUseFallback(true)}
+      />
+    );
+  }
+
+  return (
+    <LinearGradient colors={item.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.thumbnail}>
+      <Ionicons name="newspaper-outline" size={18} color="rgba(255,255,255,0.8)" />
+    </LinearGradient>
+  );
+}
+
 export default function NewsScreen() {
-  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems, trackItemClick, dataLoading } = useApp();
+  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems, trackItemClick } = useApp();
   const colors = usePalette(themeMode);
   const [activeTab, setActiveTab] = useState(feedType);
+  const [refreshing, setRefreshing] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(8);
 
   useEffect(() => {
     refreshFeed(activeTab);
+    setVisibleCount(8); // Reset pagination on tab change
   }, [activeTab]);
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshFeed(activeTab, true);
+    setVisibleCount(8);
+    setRefreshing(false);
+  };
+
+  const handleLoadMore = () => {
+    if (visibleCount < rest.length) {
+      setVisibleCount((prev) => prev + 8);
+    }
+  };
+
+  const handleOpenUrl = (rawUrl) => {
+    if (!rawUrl) return;
+    let cleanUrl = rawUrl.trim().replace(/\s+/g, '');
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = 'https://' + cleanUrl;
+    }
+    
+    // the-decoder.com blocks mobile WebViews/Custom Tabs with a 403 Forbidden page.
+    // To bypass Cloudflare, we open it directly in the device's system browser.
+    if (cleanUrl.includes('the-decoder.com')) {
+      Alert.alert(
+        "🛡️ External Website Security",
+        "This website (The Decoder) blocks in-app mobile browsers. We will open it in your system browser. If it shows 'Forbidden', simply toggle 'Request Desktop Site' in your browser!",
+        [
+          { 
+            text: "Open Link", 
+            onPress: () => Linking.openURL(cleanUrl).catch(e => console.warn("Failed to open URL in system browser:", e))
+          },
+          { text: "Cancel", style: "cancel" }
+        ]
+      );
+      return;
+    }
+    
+    WebBrowser.openBrowserAsync(cleanUrl, {
+      readerMode: false,
+      enableBarCollapsing: true,
+      dismissButtonStyle: 'close',
+      toolbarColor: colors.primary,
+    }).catch(err => {
+      console.warn("Failed to open URL in WebBrowser:", cleanUrl, err);
+      Linking.openURL(cleanUrl).catch(e => console.warn("Linking fallback failed:", e));
+    });
+  };
+
   const [featured, ...rest] = feed ?? [];
+  const paginatedRest = useMemo(() => rest.slice(0, visibleCount), [rest, visibleCount]);
   const savedIds = useMemo(() => new Set(savedItems.map((item) => item.id)), [savedItems]);
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+  const renderHeader = () => (
+    <View>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>News</Text>
-        <TouchableOpacity style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]} onPress={() => refreshFeed(activeTab, true)} disabled={dataLoading}>
-          {dataLoading ? (
-            <ActivityIndicator size="small" color={colors.text} />
-          ) : (
-            <Ionicons name="refresh-outline" size={22} color={colors.text} />
-          )}
-        </TouchableOpacity>
       </View>
 
-      <View>
+      <View style={{ marginBottom: 12 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow}>
           {TABS.map((tab) => (
             <TouchableOpacity
@@ -59,67 +172,99 @@ export default function NewsScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {featured ? (
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => {
-              if (featured.sourceUrl) {
-                trackItemClick(featured);
-                Linking.openURL(featured.sourceUrl);
-              }
-            }}
-            style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <LinearGradient colors={featured.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.featuredImage}>
-              <Ionicons name="sparkles-outline" size={22} color="rgba(255,255,255,0.8)" />
-            </LinearGradient>
-            <View style={styles.featuredContent}>
-              <View style={[styles.categoryBadge, { backgroundColor: `${featured.categoryColor ?? colors.primary}18` }]}>
-                <Text style={[styles.categoryText, { color: featured.categoryColor ?? colors.primary }]}>{featured.category}</Text>
-              </View>
-              <Text style={[styles.newsTitle, { color: colors.text, fontSize: 18 }]}>{featured.title}</Text>
-              <Text style={[styles.summaryText, { color: colors.textSub }]}>{featured.summary}</Text>
-              <View style={styles.featuredFooter}>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{featured.time || featured.sourceName}</Text>
-                <TouchableOpacity onPress={() => toggleBookmark(featured)}>
-                  <Ionicons name={savedIds.has(featured.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(featured.id) ? colors.primary : colors.textMuted} />
-                </TouchableOpacity>
-              </View>
+      {featured ? (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            if (featured.sourceUrl) {
+              trackItemClick(featured);
+              handleOpenUrl(featured.sourceUrl);
+            }
+          }}
+          style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <FeaturedThumbnail featured={featured} colors={colors} />
+          <View style={styles.featuredContent}>
+            <View style={[styles.categoryBadge, { backgroundColor: `${featured.categoryColor ?? colors.primary}18` }]}>
+              <Text style={[styles.categoryText, { color: featured.categoryColor ?? colors.primary }]}>{featured.category}</Text>
             </View>
-          </TouchableOpacity>
-        ) : null}
+            <Text style={[styles.newsTitle, { color: colors.text, fontSize: 18 }]}>{featured.title}</Text>
+            <Text style={[styles.summaryText, { color: colors.textSub }]}>{featured.summary}</Text>
+            <View style={featured.featuredFooter || styles.featuredFooter}>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{featured.time || featured.sourceName}</Text>
+              <TouchableOpacity onPress={() => toggleBookmark(featured)}>
+                <Ionicons name={savedIds.has(featured.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(featured.id) ? colors.primary : colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
 
-        {rest.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            activeOpacity={0.7}
-            onPress={() => {
-              if (item.sourceUrl) {
-                trackItemClick(item);
-                Linking.openURL(item.sourceUrl);
-              }
-            }}
-            style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <LinearGradient colors={item.imageGradient ?? ['#0C4A6E', '#075985']} style={styles.thumbnail}>
-              <Ionicons name="newspaper-outline" size={18} color="rgba(255,255,255,0.8)" />
-            </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <View style={[styles.categoryBadge, { backgroundColor: `${item.categoryColor ?? colors.primary}18`, alignSelf: 'flex-start' }]}>
-                <Text style={[styles.categoryText, { color: item.categoryColor ?? colors.primary }]}>{item.category}</Text>
-              </View>
-              <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
-              <Text style={[styles.summaryText, { color: colors.textSub }]} numberOfLines={2}>{item.summary}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.time || item.sourceName}</Text>
-            </View>
-            <TouchableOpacity onPress={() => toggleBookmark(item)}>
-              <Ionicons name={savedIds.has(item.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(item.id) ? colors.primary : colors.textMuted} />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        ))}
-        <View style={{ height: 100 }} />
-      </ScrollView>
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => {
+        if (item.sourceUrl) {
+          trackItemClick(item);
+          handleOpenUrl(item.sourceUrl);
+        }
+      }}
+      style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+    >
+      <Thumbnail item={item} colors={colors} />
+      <View style={{ flex: 1 }}>
+        <View style={[styles.categoryBadge, { backgroundColor: `${item.categoryColor ?? colors.primary}18`, alignSelf: 'flex-start' }]}>
+          <Text style={[styles.categoryText, { color: item.categoryColor ?? colors.primary }]}>{item.category}</Text>
+        </View>
+        <Text style={[styles.newsTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+        <Text style={[styles.summaryText, { color: colors.textSub }]} numberOfLines={2}>{item.summary}</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.time || item.sourceName}</Text>
+      </View>
+      <TouchableOpacity onPress={() => toggleBookmark(item)}>
+        <Ionicons name={savedIds.has(item.id) ? 'bookmark' : 'bookmark-outline'} size={20} color={savedIds.has(item.id) ? colors.primary : colors.textMuted} />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+
+  const renderFooter = () => {
+    if (visibleCount >= rest.length) {
+      return (
+        <View style={{ paddingVertical: 32, alignItems: 'center' }}>
+          <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '500' }}>🎉 You're all caught up!</Text>
+        </View>
+      );
+    }
+    return (
+      <View style={{ paddingVertical: 20 }}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+      
+      <FlatList
+        data={paginatedRest}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={3}
+        removeClippedSubviews={Platform.OS === 'android'}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.4}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
+      />
 
       <FloatingChat isDark={themeMode === 'dark'} pageContext={{ type: 'news' }} />
     </SafeAreaView>

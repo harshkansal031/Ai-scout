@@ -524,5 +524,79 @@ export function createLocalBackend(storage) {
       await writeState(state);
       return { answer: response.answer, citations: response.citations, sessionId };
     },
+
+    async fetchUpcomingEvents(userId) {
+      const state = await readState();
+      state.eventReminders = state.eventReminders ?? {};
+      const userReminders = state.eventReminders[userId] ?? [];
+      const mockEvents = [
+        {
+          id: 'mock-event-1',
+          title: 'Google I/O 2026 — The Gemini 4.0 Era',
+          description: 'Join Google developers worldwide to discover the latest products, APIs, and open-source updates in consumer AI and workspace models.',
+          eventDate: '2026-05-19T10:00:00.000Z',
+          location: 'Shoreline Amphitheatre, Mountain View, CA',
+          organizer: 'By Google Developer Relations',
+          category: 'Google',
+          badgeStatus: 'Going',
+          attendeesCount: 14532,
+          isReminderSet: userReminders.includes('mock-event-1'),
+        },
+        {
+          id: 'mock-event-2',
+          title: 'OpenAI DevDay & Spring Update',
+          description: 'Exclusive preview of OpenAI GPT-5.5-preview and advanced voice agents rolling out in the developer API dashboard.',
+          eventDate: '2026-05-22T17:00:00.000Z',
+          location: 'San Francisco, CA (Virtual Broadcast)',
+          organizer: 'By OpenAI Developer Relations',
+          category: 'OpenAI',
+          badgeStatus: 'Pending',
+          attendeesCount: 8243,
+          isReminderSet: userReminders.includes('mock-event-2'),
+        },
+        {
+          id: 'mock-event-3',
+          title: 'Apple WWDC 2026 — Siri Re-imagined',
+          description: 'Unveiling iOS 20 and macOS 17 with Apple Intelligence 2.0 fully integrated with on-device LLMs and secure cloud compute.',
+          eventDate: '2026-06-08T10:00:00.000Z',
+          location: 'Apple Park, Cupertino, CA',
+          organizer: 'By Apple Software Engineering',
+          category: 'Apple',
+          badgeStatus: 'Pending',
+          attendeesCount: 24502,
+          isReminderSet: userReminders.includes('mock-event-3'),
+        },
+        {
+          id: 'mock-event-4',
+          title: 'Meta Llama 4 Open Source Launch',
+          description: 'Technical deep-dive into Meta\'s largest open-weights 405B MoE foundation models and agentic tool-use features.',
+          eventDate: '2026-06-15T13:00:00.000Z',
+          location: 'Meta HQ, Menlo Park, CA',
+          organizer: 'By Meta AI Research (FAIR)',
+          category: 'Meta',
+          badgeStatus: 'Going',
+          attendeesCount: 5120,
+          isReminderSet: userReminders.includes('mock-event-4'),
+        }
+      ];
+      return mockEvents;
+    },
+
+    async toggleEventReminder(userId, eventId) {
+      if (!userId) throw new Error('User must be logged in to set reminders.');
+      const state = await readState();
+      state.eventReminders = state.eventReminders ?? {};
+      const current = state.eventReminders[userId] ?? [];
+      const existing = current.includes(eventId);
+      
+      if (existing) {
+        state.eventReminders[userId] = current.filter(id => id !== eventId);
+      } else {
+        state.eventReminders[userId] = [...current, eventId];
+      }
+      
+      await writeState(state);
+      return !existing;
+    },
   };
 }

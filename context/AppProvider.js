@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getBackend } from '../services/backend';
-import { registerForPushNotificationsAsync } from '../services/notifications';
+import { 
+  registerForPushNotificationsAsync,
+  scheduleEventReminderNotification,
+  cancelEventReminderNotification,
+  sendImmediateNotification
+} from '../services/notifications';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AppContext = createContext(null);
 
@@ -30,12 +37,87 @@ export function AppProvider({ children }) {
   const [feedType, setFeedType] = useState('news');
   const [roadmaps, setRoadmaps] = useState([]);
   const [exploreResults, setExploreResults] = useState(EMPTY_EXPLORE);
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [notificationPreferences, setNotificationPreferences] = useState({
     dailyTopic: true,
     breakingNews: true,
     papers: true,
   });
   const [localInterests, setLocalInterests] = useState([]);
+  const [brandCache, setBrandCache] = useState({});
+
+  useEffect(() => {
+    async function loadBrandCache() {
+      try {
+        const raw = await AsyncStorage.getItem('scout_brand_cache');
+        if (raw) {
+          setBrandCache(JSON.parse(raw));
+        }
+      } catch (e) {
+        console.warn('Failed to load brand cache:', e);
+      }
+    }
+    loadBrandCache();
+  }, []);
+
+  const triggerCacheSave = async (cleanName, url) => {
+    if (brandCache[cleanName]) return;
+    const updated = { ...brandCache, [cleanName]: url };
+    setBrandCache(updated);
+    try {
+      await AsyncStorage.setItem('scout_brand_cache', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save brand cache:', e);
+    }
+  };
+
+  const getBrandLogo = (name) => {
+    if (!name) return null;
+    const clean = name.toLowerCase().trim();
+    if (brandCache[clean]) return brandCache[clean];
+    
+    const domainMap = {
+      google: 'google.com',
+      openai: 'openai.com',
+      apple: 'apple.com',
+      meta: 'meta.com',
+      microsoft: 'microsoft.com',
+      nvidia: 'nvidia.com',
+      anthropic: 'anthropic.com',
+      huggingface: 'huggingface.co',
+      hugging_face: 'huggingface.co',
+      tesla: 'tesla.com',
+      supabase: 'supabase.com',
+      github: 'github.com',
+      amazon: 'amazon.com',
+      aws: 'amazon.com',
+      ycombinator: 'ycombinator.com',
+      yc: 'ycombinator.com',
+    };
+    const domain = domainMap[clean] || `${clean.replace(/[^a-zA-Z0-9]/g, '')}.com`;
+    const generatedUrl = `https://logo.clearbit.com/${domain}?size=120`;
+    
+    triggerCacheSave(clean, generatedUrl);
+    return generatedUrl;
+  };
+
+  const [ogCache, setOgCache] = useState({});
+
+  useEffect(() => {
+    async function loadOgCache() {
+      try {
+        const raw = await AsyncStorage.getItem('scout_og_cache');
+        if (raw) {
+          setOgCache(JSON.parse(raw));
+        }
+      } catch (e) {
+        console.warn('Failed to load OG cache:', e);
+      }
+    }
+    loadOgCache();
+  }, []);
+
+
 
   useEffect(() => {
     let mounted = true;
@@ -108,6 +190,9 @@ export function AppProvider({ children }) {
       setFeedType('news');
       setRoadmaps(initialRoadmaps);
       setExploreResults(EMPTY_EXPLORE);
+
+      const initialEvents = await backend.fetchUpcomingEvents(userId).catch(() => []);
+      setUpcomingEvents(initialEvents);
 
       if (backend.triggerIngestFeed) {
         backend.triggerIngestFeed()
@@ -211,8 +296,17 @@ export function AppProvider({ children }) {
       // Always sort strictly chronologically (newest first) to guarantee the latest news is always at the top
       items.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
 
-      setFeed(items);
+      // Apply existing cache synchronously first so cached images load instantly!
+      const itemsWithCachedImages = items.map(item => {
+        if (item.sourceUrl && ogCache[item.sourceUrl]) {
+          return { ...item, imageUrl: ogCache[item.sourceUrl] };
+        }
+        return item;
+      });
+
+      setFeed(itemsWithCachedImages);
       setFeedType(type);
+      
       return items;
     } catch (nextError) {
       setError(nextError.message);
@@ -320,19 +414,39 @@ export function AppProvider({ children }) {
     }
   }
 
+  /** Steps for a roadmap id from freshly loaded tree (source of truth for Explore timeline). */
+  function stepsFromRoadmapTree(updatedTree, roadmapId) {
+    const id = roadmapId ?? '';
+    for (const field of updatedTree ?? []) {
+      const sub = field.children?.find((c) => c.id === id);
+      if (sub?.children?.length) return sub.children;
+    }
+    return [];
+  }
+
   async function generateRoadmap(fieldId, roadmapId, title, description) {
     try {
-      const newRoadmapContent = await backend.generateRoadmap(
+      const directResult = await backend.generateRoadmap(
         fieldId,
         roadmapId,
         title,
         description,
       );
-      await refreshRoadmaps();
-      return newRoadmapContent;
+      const updated = await refreshRoadmaps();
+
+      if (Array.isArray(directResult) && directResult.length > 0) {
+        return directResult;
+      }
+
+      const fromDb = stepsFromRoadmapTree(updated, roadmapId);
+      if (fromDb.length > 0) {
+        return fromDb;
+      }
+
+      return [];
     } catch (e) {
       setError(e.message);
-      return null;
+      return [];
     }
   }
 
@@ -342,6 +456,57 @@ export function AppProvider({ children }) {
     }
 
     return backend.sendChatMessage(session.user.id, { message, pageContext });
+  }
+
+  async function fetchUpcomingEvents() {
+    try {
+      const userId = session?.user?.id;
+      const events = await backend.fetchUpcomingEvents(userId);
+      setUpcomingEvents(events);
+      return events;
+    } catch (e) {
+      console.warn('Failed to fetch upcoming events:', e.message);
+      return [];
+    }
+  }
+
+  async function toggleEventReminder(eventId) {
+    if (!session?.user?.id) {
+      throw new Error('Sign in to set reminders.');
+    }
+    try {
+      const isSet = await backend.toggleEventReminder(session.user.id, eventId);
+      
+      // Update state
+      setUpcomingEvents(prev => prev.map(e => e.id === eventId ? { ...e, isReminderSet: isSet } : e));
+
+      // Trigger & schedule local push notifications on device
+      const eventDetails = upcomingEvents.find(e => e.id === eventId);
+      if (eventDetails) {
+        if (isSet) {
+          // Schedule 1 hour before
+          await scheduleEventReminderNotification(eventId, eventDetails.title, eventDetails.eventDate);
+          // Pop up confirmation instantly
+          await sendImmediateNotification(
+            '🔔 Reminder Set!',
+            `We will alert you 1 hour before "${eventDetails.title}" starts!`
+          );
+        } else {
+          // Cancel scheduled alert
+          await cancelEventReminderNotification(eventId);
+          // Pop up cancellation instantly
+          await sendImmediateNotification(
+            '🔕 Reminder Cancelled',
+            `Alert for "${eventDetails.title}" has been removed.`
+          );
+        }
+      }
+
+      return isSet;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    }
   }
 
   async function trackItemClick(item) {
@@ -398,6 +563,7 @@ export function AppProvider({ children }) {
       exploreResults,
       notificationPreferences,
       themeMode: profile?.themeMode ?? 'light',
+      upcomingEvents,
       signIn,
       signUp,
       signOut,
@@ -413,6 +579,9 @@ export function AppProvider({ children }) {
       trackSearch,
       generateRoadmap,
       refreshRoadmaps,
+      fetchUpcomingEvents,
+      toggleEventReminder,
+      getBrandLogo,
       backend,
     }),
     [
@@ -432,6 +601,9 @@ export function AppProvider({ children }) {
       continueLearning,
       localInterests,
       roadmaps,
+      upcomingEvents,
+      brandCache,
+      ogCache,
     ],
   );
 

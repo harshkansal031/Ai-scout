@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,11 +16,14 @@ function usePalette(themeMode) {
 
 function AIScoutLogo({ colors }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      <View style={{ backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3 }}>
-        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>AI</Text>
-      </View>
-      <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Scout</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Image 
+        source={require('../constants/chatbot-icon.png')} 
+        style={{ width: 28, height: 28, resizeMode: 'contain' }} 
+      />
+      <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, letterSpacing: 0.2 }}>
+        Scout <Text style={{ color: colors.primary }}>AI</Text>
+      </Text>
     </View>
   );
 }

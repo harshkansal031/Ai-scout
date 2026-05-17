@@ -66,3 +66,78 @@ export async function registerForPushNotificationsAsync() {
 
   return token.data;
 }
+
+export async function sendImmediateNotification(title, body, data = {}) {
+  try {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data,
+      },
+      trigger: null,
+    });
+  } catch (err) {
+    console.warn('Failed to trigger immediate notification:', err);
+  }
+}
+
+export async function scheduleEventReminderNotification(eventId, title, eventDateStr) {
+  try {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications) return null;
+
+    // 1. Cancel any existing notification for this event first to prevent duplicates
+    await cancelEventReminderNotification(eventId);
+
+    const eventDate = new Date(eventDateStr);
+    const now = new Date();
+    if (isNaN(eventDate.getTime()) || eventDate <= now) {
+      return null;
+    }
+
+    // Schedule for 1 hour before the event
+    const triggerTime = new Date(eventDate.getTime() - 60 * 60 * 1000); 
+
+    let trigger;
+    if (triggerTime <= now) {
+      // If the event starts in less than an hour, trigger after 8 seconds for test!
+      trigger = { seconds: 8 };
+    } else {
+      trigger = triggerTime;
+    }
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `🔔 Upcoming Event: ${title}`,
+        body: `Starting in 1 hour! Make sure you don't miss out.`,
+        data: { type: 'event-reminder', eventId },
+      },
+      trigger,
+    });
+
+    return notificationId;
+  } catch (err) {
+    console.warn('Failed to schedule local notification:', err);
+    return null;
+  }
+}
+
+export async function cancelEventReminderNotification(eventId) {
+  try {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications) return;
+
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const notif of scheduled) {
+      if (notif.content.data?.eventId === eventId) {
+        await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to cancel local notification:', err);
+  }
+}

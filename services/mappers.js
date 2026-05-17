@@ -1,3 +1,5 @@
+import { sanitizeImageUrl } from '../utils/imageUrl';
+
 export function normalizeTopic(topic) {
   if (!topic) {
     return null;
@@ -23,6 +25,30 @@ export function normalizeContentItem(item) {
     return null;
   }
 
+  let imageUrl = sanitizeImageUrl(
+    item.imageUrl ?? item.image_url ?? item.metadata?.imageUrl ?? item.metadata?.image_url ?? item.metadata?.ogImage ?? null,
+  );
+
+  // Clean relative URLs into absolute URLs using the sourceUrl domain
+  if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+    const sourceUrl = item.source_url ?? item.sourceUrl ?? '';
+    if (sourceUrl) {
+      try {
+        const match = sourceUrl.match(/^(https?:\/\/[^\/]+)/i);
+        if (match && match[1]) {
+          const host = match[1];
+          if (imageUrl.startsWith('/')) {
+            imageUrl = host + imageUrl;
+          } else {
+            imageUrl = host + '/' + imageUrl;
+          }
+        }
+      } catch (e) {
+        // Silent ignore
+      }
+    }
+  }
+
   return {
     id: item.id,
     type: item.type ?? 'news',
@@ -34,6 +60,7 @@ export function normalizeContentItem(item) {
     publishedAt: item.published_at ?? null,
     sourceName: item.source_name ?? item.sourceName ?? '',
     sourceUrl: item.source_url ?? item.sourceUrl ?? '',
+    imageUrl,
     tags: item.tags ?? [],
     saved: Boolean(item.saved),
     imageGradient: item.imageGradient ?? pickGradient(item.type ?? item.category),

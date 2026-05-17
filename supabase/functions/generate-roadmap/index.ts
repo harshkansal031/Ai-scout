@@ -59,10 +59,17 @@ serve(async (req) => {
       })
     }
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
+    // Dedicated key for roadmap generation (recommended). Falls back so older deploys keep working.
+    const GEMINI_API_KEY =
+      Deno.env.get('GEMINI_ROADMAP_API_KEY') ?? Deno.env.get('GEMINI_API_KEY')
     if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not set")
+      throw new Error(
+        'Set Edge secret GEMINI_ROADMAP_API_KEY (recommended) or GEMINI_API_KEY in Supabase Dashboard',
+      )
     }
+
+    const GEMINI_MODEL =
+      Deno.env.get('GEMINI_ROADMAP_MODEL')?.trim() || 'gemini-2.5-flash'
 
     const prompt = `You are an expert AI curriculum designer. Build a progressive 4-5 step learning roadmap for the topic: "${title}".
 Description context: ${description || 'N/A'}.
@@ -76,23 +83,32 @@ Return ONLY a valid JSON array of objects, with no markdown formatting or extra 
 - "desc": One short, punchy sentence explaining what they will learn.
 - "resource": The official documentation URL or best canonical reference for this step (e.g. "https://pytorch.org/docs/stable/nn.html" for PyTorch modules, "https://huggingface.co/docs/transformers" for HuggingFace). Use null if no official docs exist. NEVER use YouTube URLs.`
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-           temperature: 0.2,
-           responseMimeType: "application/json",
-        }
-      })
-    })
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+          },
+        }),
+      },
+    )
 
     const geminiData = await response.json()
     const generatedText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
-    
+
     if (!generatedText) {
-      throw new Error("Failed to generate content from Gemini")
+      const blocked = geminiData.promptFeedback
+      const gErr = geminiData.error ?? geminiData
+      throw new Error(
+        `Gemini produced no candidates: HTTP ${response.status}; ` +
+          (blocked?.blockReason ? `blocked=${blocked.blockReason}; ` : '') +
+          (typeof gErr === 'object' ? JSON.stringify(gErr) : String(gErr)).slice(0, 420),
+      )
     }
 
     const rawContent = JSON.parse(generatedText) as RoadmapStep[]
