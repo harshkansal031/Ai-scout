@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { useNavigation } from '@react-navigation/native';
 import ProgressRing from '../components/ProgressRing';
 import WeekDots from '../components/WeekDots';
 import FloatingChat from '../components/FloatingChat';
@@ -35,7 +36,7 @@ function TodayTopicCard({ topic, onPress }) {
         <View style={styles.topicDecor1} />
         <View style={styles.topicDecor2} />
         <View style={styles.topicContent}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
+          <View style={{ flex: 1 }}>
             <View style={styles.topicPill}>
               <Text style={styles.topicPillText}>Today's Topic</Text>
             </View>
@@ -45,18 +46,14 @@ function TodayTopicCard({ topic, onPress }) {
               <Text style={styles.topicMetaText}>{topic?.duration ?? 30} min</Text>
             </View>
           </View>
-          <View style={styles.botVisual}>
-            <View style={styles.botCircle}>
-              <Ionicons name="hardware-chip" size={28} color="#2563EB" />
-            </View>
-          </View>
         </View>
       </LinearGradient>
     </TouchableOpacity>
   );
 }
 
-export default function TodayScreen({ navigation }) {
+export default function TodayScreen() {
+  const navigation = useNavigation();
   const { themeMode, todayTopic, progress, continueLearning, historyItems, dataLoading, backendKind } = useApp();
   const colors = usePalette(themeMode);
 
@@ -259,7 +256,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: 22,
     marginBottom: 14,
-    minHeight: 160,
+    minHeight: 132,
   },
   topicDecor1: {
     position: 'absolute',
@@ -280,8 +277,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
   topicContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'flex-start',
   },
   topicPill: {
@@ -313,20 +309,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     fontSize: 13,
     fontWeight: '500',
-  },
-  botVisual: {
-    width: 80,
-    height: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  botCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   startBtn: {
     borderRadius: RADIUS.lg,
