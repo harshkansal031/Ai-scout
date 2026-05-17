@@ -103,9 +103,14 @@ begin
   set is_staging = false
   where batch_id = p_batch_id and is_staging = true;
 
-  -- 3. Delete all OLD live rows (not from this batch)
+  -- 3. Delete all OLD live rows only for topics included in this batch
   delete from public.topic_content
   where is_staging = false
+    and topic_id in (
+      select distinct topic_id
+      from public.topic_content
+      where batch_id = p_batch_id
+    )
     and (batch_id is null or batch_id != p_batch_id);
 
   get diagnostics deleted_count = row_count;

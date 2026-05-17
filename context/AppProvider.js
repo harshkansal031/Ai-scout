@@ -437,6 +437,7 @@ export function AppProvider({ children }) {
       trackSearch,
       generateRoadmap,
       refreshRoadmaps,
+      backend,
     }),
     [
       authLoading,

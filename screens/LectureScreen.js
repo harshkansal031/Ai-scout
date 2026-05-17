@@ -3,8 +3,9 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Linking } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import RAGDiagram from '../components/RAGDiagram';
+import DynamicTopicDiagram from '../components/DynamicTopicDiagram';
 import FloatingChat from '../components/FloatingChat';
+import ConfettiCelebration from '../components/ConfettiCelebration';
 import { useApp } from '../context/AppProvider';
 import { DARK, LIGHT, RADIUS, SPACING } from '../constants/theme';
 
@@ -15,11 +16,16 @@ function usePalette(themeMode) {
 }
 
 export default function LectureScreen({ route, navigation }) {
-  const { themeMode, markTopicComplete, toggleBookmark, savedItems } = useApp();
+  const { themeMode, markTopicComplete, toggleBookmark, savedItems, progress } = useApp();
   const colors = usePalette(themeMode);
   const [activeTab, setActiveTab] = useState(0);
+  const [showCelebration, setShowCelebration] = useState(false);
   const topic = route?.params?.topic ?? {};
   const isSaved = useMemo(() => savedItems.some((item) => item.id === topic.id), [savedItems, topic.id]);
+  
+  const isCompleted = useMemo(() => {
+    return (progress?.completedTopicIds ?? []).includes(topic.id);
+  }, [progress?.completedTopicIds, topic.id]);
 
   const whatYoullLearn = topic.whatYoullLearn ?? [
     'What the topic solves in production AI workflows',
@@ -35,6 +41,7 @@ export default function LectureScreen({ route, navigation }) {
     'Measure quality with real user questions.',
     'Iterate on latency, grounding, and reliability.',
   ];
+
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -65,7 +72,7 @@ export default function LectureScreen({ route, navigation }) {
           </View>
         </View>
 
-        <RAGDiagram />
+        <DynamicTopicDiagram fieldSlug={topic.field_slug || topic.fieldSlug} topicTitle={topic.title} />
 
         <View style={[styles.tabsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {TABS.map((tab, idx) => (
@@ -149,14 +156,36 @@ export default function LectureScreen({ route, navigation }) {
           </>
         ) : null}
 
-        <TouchableOpacity style={[styles.completeBtn, { backgroundColor: colors.success }]} onPress={() => markTopicComplete(topic.id)}>
-          <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-          <Text style={styles.completeBtnText}>Mark as Complete</Text>
+        <TouchableOpacity 
+          style={[styles.completeBtn, { backgroundColor: isCompleted ? '#059669' : colors.success }]} 
+          onPress={async () => {
+            if (!isCompleted) {
+              const res = await markTopicComplete(topic.id);
+              if (res) {
+                setShowCelebration(true);
+              }
+            }
+          }}
+          disabled={isCompleted}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={isCompleted ? "checkmark-done-circle" : "checkmark-circle"} size={20} color="#FFF" />
+          <Text style={styles.completeBtnText}>
+            {isCompleted ? 'Completed' : 'Mark as Complete'}
+          </Text>
         </TouchableOpacity>
         <View style={{ height: 100 }} />
       </ScrollView>
 
       <FloatingChat isDark={themeMode === 'dark'} pageContext={{ type: 'lecture', topic }} />
+
+      <ConfettiCelebration
+        visible={showCelebration}
+        streakCount={progress?.streak ?? 1}
+        topicTitle={topic.title}
+        colors={colors}
+        onClose={() => setShowCelebration(false)}
+      />
     </SafeAreaView>
   );
 }

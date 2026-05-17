@@ -291,7 +291,7 @@ Be accurate. Match difficulty to actual complexity. docs_url must be a real URL.
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -397,17 +397,48 @@ async function main() {
   let totalInserted = 0;
   let totalSkipped = 0;
 
+  const args = process.argv.slice(2);
+  const reEnrich = args.includes('--re-enrich') || args.includes('-r');
+
   // Fetch already-seeded field slugs so we can skip them on re-runs
   const { data: existing } = await supabase
     .from('explore_topics')
-    .select('field_slug');
-  const seededSlugs = new Set((existing ?? []).map((r) => r.field_slug));
+    .select('field_slug, docs_url');
+  
+  const seededSlugs = new Set();
+  const fallbackSlugs = new Set();
+  
+  if (existing && existing.length > 0) {
+    const fieldTopics = {};
+    existing.forEach((row) => {
+      if (!fieldTopics[row.field_slug]) {
+        fieldTopics[row.field_slug] = { total: 0, fallbacks: 0 };
+      }
+      fieldTopics[row.field_slug].total++;
+      if (row.docs_url === null) {
+        fieldTopics[row.field_slug].fallbacks++;
+      }
+    });
+    
+    for (const [slug, stats] of Object.entries(fieldTopics)) {
+      if (stats.fallbacks > stats.total * 0.5) {
+        fallbackSlugs.add(slug);
+      } else {
+        seededSlugs.add(slug);
+      }
+    }
+  }
 
   for (const fieldDef of FIELDS) {
     const { slug, field, topics } = fieldDef;
 
     if (seededSlugs.has(slug)) {
-      console.log(`\n[${slug}] Already seeded — skipping.`);
+      console.log(`\n[${slug}] Already seeded with rich metadata — skipping.`);
+      continue;
+    }
+    
+    if (fallbackSlugs.has(slug) && !reEnrich) {
+      console.log(`\n[${slug}] Already seeded (via local fallback) — skipping (use --re-enrich or -r to enrich with Gemini).`);
       continue;
     }
 
@@ -445,11 +476,11 @@ async function main() {
   }
 
   console.log(`\n✅ Done! Inserted ${totalInserted} topics, skipped ${totalSkipped}.`);
-  console.log('\n📡 Triggering first content fetch for all topics...');
+  console.log('\n📡 Triggering first content fetch for a subset of topics...');
 
   const batchId = `seed-${Date.now()}`;
   const { data: fnData, error: fnError } = await supabase.functions.invoke('fetch-topic-content', {
-    body: { run_all: true, batch_id: batchId },
+    body: { run_all: true, batch_id: batchId, limit: 25 },
   });
 
   if (fnError) {

@@ -28,6 +28,9 @@ yarn-error.log*
 .env*.local
 .env
 
+# topic content backfill progress (local only)
+scripts/.prefill_attempted.json
+
 # vercel
 .vercel
 

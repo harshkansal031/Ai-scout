@@ -448,6 +448,45 @@ export const supabaseBackend = {
   },
 
   /**
+   * Resolve a stable explore_topics.id from slug and/or display title.
+   * Roadmap steps often use slugify(title) which may not match Gemini-seeded ids.
+   */
+  async resolveExploreTopicId(topicId, topicTitle) {
+    const supabase = getClient();
+    const slug = String(topicId ?? '').trim();
+    const title = String(topicTitle ?? '').trim();
+
+    if (slug) {
+      const { data: byId } = await supabase
+        .from('explore_topics')
+        .select('id')
+        .eq('id', slug)
+        .maybeSingle();
+      if (byId?.id) return byId.id;
+    }
+
+    if (title) {
+      const { data: byTitle } = await supabase
+        .from('explore_topics')
+        .select('id')
+        .ilike('title', title)
+        .limit(1)
+        .maybeSingle();
+      if (byTitle?.id) return byTitle.id;
+
+      const { data: byFuzzy } = await supabase
+        .from('explore_topics')
+        .select('id')
+        .or(`title.ilike.%${title}%,short_desc.ilike.%${title}%`)
+        .limit(1)
+        .maybeSingle();
+      if (byFuzzy?.id) return byFuzzy.id;
+    }
+
+    return slug || null;
+  },
+
+  /**
    * Fetch dynamic content (articles/papers/posts) stored in topic_content
    * for a specific explore_topics entry.
    */
@@ -470,6 +509,39 @@ export const supabaseBackend = {
         categoryColor: item.category_color,
       })
     ).filter(Boolean);
+  },
+
+  /**
+   * Fetch full metadata for a specific explore_topic (definition, difficulty, etc.)
+   */
+  async fetchTopic(topicId) {
+    const supabase = getClient();
+    const { data, error } = await supabase
+      .from('explore_topics')
+      .select('*')
+      .eq('id', topicId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Trigger a real-time crawl of explore content for a specific topic.
+   * Returns { ok, itemsInserted } so the UI knows whether anything was found.
+   */
+  async triggerTopicCrawl(topicId, topicTitle) {
+    const supabase = getClient();
+    const { data, error } = await supabase.functions.invoke('fetch-topic-content', {
+      body: {
+        topic_id: topicId,
+        topic_title: topicTitle ?? undefined,
+      },
+    });
+    if (error) {
+      return { ok: false, itemsInserted: 0 };
+    }
+    const itemsInserted = Number(data?.items_inserted ?? 0);
+    return { ok: true, itemsInserted };
   },
 
   async sendChatMessage(userId, { message, pageContext }) {

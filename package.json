@@ -10,7 +10,9 @@
     "test": "node --experimental-default-type=module --test tests/*.test.mjs",
     "seed:library": "node seed-ai-library.js",
     "seed:library:replace": "node seed-ai-library.js --replace",
-    "seed:generate": "node generate-missing-roadmaps.js --limit 15"
+    "seed:generate": "node generate-missing-roadmaps.js --limit 15",
+    "prefill:topics": "node scripts/prefill_topic_content.js --limit 50",
+    "prefill:topics:all": "node scripts/prefill_topic_content.js --all --batch-size 40 --delay 2500"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -40,6 +40,14 @@ const TYPE_ICON = {
   default:  'link-outline',
 };
 
+function slugify(text) {
+  return String(text ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 40);
+}
+
 export default function ExploreScreen({ navigation }) {
   const { themeMode, roadmaps, generateRoadmap, backend } = useApp();
   const colors = usePalette(themeMode);
@@ -48,6 +56,7 @@ export default function ExploreScreen({ navigation }) {
   const [loadingTopicId, setLoadingTopicId] = useState(null);
 
   // Topic content (for 'topic-content' level)
+  const [topicMetadata, setTopicMetadata]       = useState(null);
   const [topicContent, setTopicContent]         = useState([]);
   const [topicContentTab, setTopicContentTab]   = useState('all');
   const [topicContentLoading, setTopicContentLoading] = useState(false);
@@ -105,17 +114,52 @@ export default function ExploreScreen({ navigation }) {
   }, [searchQuery, backend]);
 
   // ── Topic content fetch ───────────────────────────────────────────────────
-  const loadTopicContent = useCallback(async (topicTitle) => {
+  const loadTopicContent = useCallback(async (topicId, topicTitle) => {
     setTopicContent([]);
     setTopicContentTab('all');
     setTopicContentLoading(true);
+    setTopicMetadata(null);
     try {
-      const results = await backend.searchExploreContent(topicTitle);
-      // Merge explore_topics corpus results + content_items results
-      const allItems = [
-        ...(results.items ?? []),
-      ];
-      setTopicContent(allItems);
+      // Resolve canonical explore_topics.id (roadmap slug often ≠ seeded id)
+      let resolvedId = topicId;
+      if (backend.resolveExploreTopicId) {
+        resolvedId = await backend.resolveExploreTopicId(topicId, topicTitle);
+      }
+
+      if (resolvedId && backend.fetchTopic) {
+        const meta = await backend.fetchTopic(resolvedId).catch(() => null);
+        if (meta) {
+          setTopicMetadata({
+            title: meta.title,
+            diff: meta.difficulty,
+            desc: meta.description || meta.short_desc,
+            resource: meta.docs_url,
+          });
+        }
+      }
+
+      let items = [];
+      if (resolvedId) {
+        items = await backend.fetchTopicContent(resolvedId);
+      }
+
+      // On-demand crawl (2–5s) when DB has no rows yet — not a background job you must wait hours for
+      if (resolvedId && (!items || items.length === 0) && backend.triggerTopicCrawl) {
+        try {
+          const crawl = await backend.triggerTopicCrawl(resolvedId, topicTitle);
+          if (crawl?.ok && crawl.itemsInserted > 0) {
+            items = await backend.fetchTopicContent(resolvedId);
+          }
+        } catch (err) {
+          console.log('[Explore] dynamic crawl failed:', err);
+        }
+      }
+
+      if (!items || items.length === 0) {
+        const results = await backend.searchExploreContent(topicTitle);
+        items = results.items ?? [];
+      }
+      setTopicContent(items);
     } catch (e) {
       console.error('[Explore] topic content error:', e);
     } finally {
@@ -139,8 +183,9 @@ export default function ExploreScreen({ navigation }) {
   };
 
   const handleRoadmapCardPress = (topic) => {
-    pushStack('topic-content', topic, topic.title, topic.id);
-    loadTopicContent(topic.title);
+    const stableId = slugify(topic.title);
+    pushStack('topic-content', { ...topic, id: stableId }, topic.title, stableId);
+    loadTopicContent(stableId, topic.title);
   };
 
   // ── Content card (shared between topic-content and search-results) ────────
@@ -282,7 +327,7 @@ export default function ExploreScreen({ navigation }) {
   );
 
   const renderTopicContent = () => {
-    const topic = currentView.data;
+    const topic = topicMetadata || currentView.data || {};
     const diffColor =
       topic.diff === 'Beginner' ? colors.success
       : topic.diff === 'Intermediate' ? colors.warning
@@ -351,10 +396,15 @@ export default function ExploreScreen({ navigation }) {
 
         {/* Content list */}
         {topicContentLoading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+          <View style={{ alignItems: 'center', marginTop: 40, gap: 12 }}>
+            <ActivityIndicator color={colors.primary} size="large" />
+            <Text style={{ color: colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center', lineHeight: 18 }}>
+              Assembling fresh dynamic research, articles, and community insights...
+            </Text>
+          </View>
         ) : filtered.length === 0 ? (
           <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-            No content found for this topic yet. Check back after the next refresh.
+            We could not find articles or papers for this topic from our sources right now. Try a broader search from Explore home, or open again later after the daily refresh.
           </Text>
         ) : (
           <View style={styles.contentList}>
@@ -399,8 +449,9 @@ export default function ExploreScreen({ navigation }) {
                       diff: topic.difficulty,
                       desc: topic.short_desc,
                       resource: topic.docs_url,
+                      id: topic.id,
                     }, topic.title, topic.id);
-                    loadTopicContent(topic.title);
+                    loadTopicContent(topic.id, topic.title);
                   }}
                 >
                   <View style={{ flex: 1 }}>
@@ -531,7 +582,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    height: 180,
+    minHeight: 180,
   },
   iconBox: {
     width: 50,

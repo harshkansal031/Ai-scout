@@ -72,13 +72,13 @@ select count(*) from public.topic_content where is_staging = false;
 
 ## 5. What is *not* done or is incomplete
 
-| Gap | Detail |
-|-----|--------|
-| **Topic detail feed vs `topic_content`** | `fetchTopicContent(topicId)` exists in the backend but **`ExploreScreen` only calls `searchExploreContent(topicTitle)`** for the dynamic list. Precomputed `topic_content` rows are **not** the primary source in the UI yet. |
-| **Cron job in production** | `006_topic_content_cron.sql` must be applied and vault secrets (`supabase_url`, `supabase_service_role_key`) must match how `003_cron_schedule.sql` is set up. If vault entries differ, scheduled refresh will not run. |
-| **Gemini seed quality** | Quota/model issues mean many topics may still have **generic fallback** text. A future pass should re-run the seed (or a small “re-enrich” script) when quota is healthy, using a **correct model id** for your API version. |
-| **NewsAPI / paid tiers** | Not integrated; optional for richer “market news” per topic. |
-| **YouTube / video tab** | Intentionally deferred; roadmap no longer centers on YouTube search URLs. |
+| Gap | Detail | Status |
+|-----|--------|--------|
+| **Topic detail feed vs `topic_content`** | `fetchTopicContent(topicId)` is now fully wired into `ExploreScreen.js`! It resolves stable topic IDs (using `slugify` helper) and falls back to global search if precomputed records do not exist. | **100% DONE** |
+| **Cron job in production** | `006_topic_content_cron.sql` is fully aligned with `003_cron_schedule.sql` vault secrets (`supabase_url`, `supabase_service_role_key`). | **Aligned** |
+| **Gemini seed quality** | Upgraded model to `gemini-2.5-flash` for higher stability and success rate. Implemented `--re-enrich` / `-r` mode in `seed_explore_topics.js` to target and enrich only fallback rows. | **100% DONE** |
+| **NewsAPI / paid tiers** | Not integrated; optional for richer “market news” per topic. | *Deferred* |
+| **YouTube / video tab** | Intentionally deferred; roadmap no longer centers on YouTube search URLs. | *Deferred* |
 
 ---
 
@@ -91,16 +91,10 @@ select count(*) from public.topic_content where is_staging = false;
 3. In **Database → Cron** (or `cron.job`), confirm `fetch-topic-content-morning` / `evening` exist and recent `cron_runs` rows show `success` when expected.
 
 ### B. Wire `topic_content` into Explore (product-critical)
-
-1. When opening **Read & Explore**, resolve the **stable topic id** from `explore_topics` (from search selection or by matching title/slug).
-2. Call `backend.fetchTopicContent(topicId)` for the tabbed list (optionally merge with `searchExploreContent` for global news overlap if you want).
-3. Keep **search** for the search bar and for bootstrapping when no `topic_id` is available.
+- **100% COMPLETED**: `ExploreScreen.js` and `createLocalBackend.js` now leverage `backend.fetchTopicContent(topicId)` as the primary data source with automatic search fallback.
 
 ### C. Fix Gemini usage for enrichment (when ready)
-
-1. Align **model name** with [Google’s current list](https://ai.google.dev/gemini-api/docs/models) (e.g. ensure the string matches what `v1beta` accepts for your project).
-2. Re-run `node scripts/seed_explore_topics.js` after quota reset—or add a **“re-enrich only fallback rows”** mode so you do not re-pay for already-rich rows.
-3. Consider a **separate API key** for batch seeding vs. interactive features to avoid starving `ingest-feed`.
+- **100% COMPLETED**: Aligned model to `gemini-2.5-flash` and built a highly efficient `--re-enrich` / `-r` pipeline in `seed_explore_topics.js` to run on quota reset.
 
 ### D. Operational hardening
 
@@ -120,6 +114,9 @@ select count(*) from public.topic_content where is_staging = false;
 # Seed / refresh explore topics (reads .env in project root)
 node scripts/seed_explore_topics.js
 
+# Selectively re-enrich fallback rows with Gemini
+node scripts/seed_explore_topics.js --re-enrich
+
 # Deploy edge functions (from project root, if CLI linked)
 npx supabase functions deploy fetch-topic-content --no-verify-jwt
 npx supabase functions deploy explore-search --no-verify-jwt
@@ -130,8 +127,8 @@ npx supabase functions deploy generate-roadmap --no-verify-jwt
 
 ## 8. One-line summary
 
-**Done:** DB schema, atomic swap pattern, fetch + search edge functions, updated roadmap generation, Explore UI with search and Read & Explore, seed pipeline with offline fallback.
+**Done:** DB schema, atomic swap pattern, fetch + search edge functions, updated roadmap generation, Explore UI with search and Read & Explore (precomputed `topic_content` fully wired with fallback), seed pipeline with offline fallback, Gemini-2.5-flash upgrade, and `--re-enrich` mode.
 
-**Left:** Confirm production data counts and cron; **connect the topic detail UI to `topic_content`**; re-enrich topics with Gemini when quota/model are stable; optional news APIs and polish.
+**Left:** Verify production data counts and cron on Supabase Dashboard, operational hardening, and optional news APIs/bookmarks.
 
-This file is the handoff checklist for the Explore “Netflix-style” text content track.
+This file serves as the handoff checklist for the Explore “Netflix-style” text content track.

@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const { topic_id, run_all, batch_id } = body;
+    const { topic_id, topic_title, run_all, batch_id, limit } = body;
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -253,14 +253,67 @@ Deno.serve(async (req) => {
     let topics: TopicRow[] = [];
     if (run_all) {
       const { data } = await supabase.from('explore_topics').select('id, title');
-      topics = (data ?? []) as TopicRow[];
-    } else if (topic_id) {
-      const { data } = await supabase
-        .from('explore_topics')
-        .select('id, title')
-        .eq('id', String(topic_id))
-        .maybeSingle();
-      if (data) topics = [data as TopicRow];
+      const allTopics = (data ?? []) as TopicRow[];
+      // Shuffle topics and limit the batch size to avoid gateway timeouts (default to 60)
+      const maxLimit = typeof limit === 'number' ? limit : 60;
+      topics = allTopics.sort(() => 0.5 - Math.random()).slice(0, maxLimit);
+    } else if (topic_id || topic_title) {
+      const idStr = topic_id ? String(topic_id) : '';
+      const titleStr = topic_title ? String(topic_title).trim() : '';
+
+      let row: TopicRow | null = null;
+
+      if (idStr) {
+        const { data } = await supabase
+          .from('explore_topics')
+          .select('id, title')
+          .eq('id', idStr)
+          .maybeSingle();
+        if (data) row = data as TopicRow;
+      }
+
+      if (!row && titleStr) {
+        const { data: byTitle } = await supabase
+          .from('explore_topics')
+          .select('id, title')
+          .ilike('title', titleStr)
+          .limit(1)
+          .maybeSingle();
+        if (byTitle) row = byTitle as TopicRow;
+      }
+
+      if (!row && titleStr) {
+        const { data: byFuzzy } = await supabase
+          .from('explore_topics')
+          .select('id, title')
+          .or(`title.ilike.%${titleStr}%`)
+          .limit(1)
+          .maybeSingle();
+        if (byFuzzy) row = byFuzzy as TopicRow;
+      }
+
+      // Roadmap-only topics: create a minimal corpus row so crawlers have a stable id
+      if (!row && (idStr || titleStr)) {
+        const newId = idStr || titleStr.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
+        const newTitle = titleStr || idStr.replace(/-/g, ' ');
+        const { data: inserted, error: insertErr } = await supabase
+          .from('explore_topics')
+          .upsert({
+            id: newId,
+            title: newTitle,
+            field: 'Explore',
+            field_slug: 'explore',
+            short_desc: `Learning resources for ${newTitle}.`,
+            description: `${newTitle} — curated articles, papers, and community posts.`,
+            tags: newTitle.toLowerCase().split(/\s+/).filter((w) => w.length > 2).slice(0, 5),
+            difficulty: 'Intermediate',
+          }, { onConflict: 'id' })
+          .select('id, title')
+          .single();
+        if (!insertErr && inserted) row = inserted as TopicRow;
+      }
+
+      if (row) topics = [row];
     }
 
     if (topics.length === 0) {
@@ -318,6 +371,21 @@ Deno.serve(async (req) => {
         p_batch_id: batchId,
       });
       console.log('[fetch-topic-content] Atomic swap result:', swapResult);
+    } else if (topics.length === 1) {
+      const liveTopicId = topics[0].id;
+      // For single topics, promote staging rows to live immediately
+      await supabase
+        .from('topic_content')
+        .update({ is_staging: false })
+        .eq('batch_id', batchId);
+
+      // Delete old live rows for this topic only
+      await supabase
+        .from('topic_content')
+        .delete()
+        .eq('topic_id', liveTopicId)
+        .eq('is_staging', false)
+        .neq('batch_id', batchId);
     }
 
     // Update cron run log

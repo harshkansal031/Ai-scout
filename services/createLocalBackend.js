@@ -229,13 +229,34 @@ function matchesSearch(item, query) {
 function computeSavedItems(state, userId) {
   const bookmarkList = state.bookmarks[userId] ?? [];
   return bookmarkList
-    .map((bookmark) => state.contentItems.find((item) => item.id === bookmark.contentId))
-    .filter(Boolean)
-    .map((item) => ({
-      ...normalizeContentItem(item),
-      type: capitalize(item.type ?? item.category ?? 'Item'),
-      time: item.time ?? item.metadata?.duration ?? '15 min',
-    }));
+    .map((bookmark) => {
+      if (bookmark.contentType === 'topic') {
+        const topic = (state.dailyTopics ?? []).find((t) => t.id === bookmark.contentId) 
+                   || (state.exploreTopics ?? []).find((t) => t.id === bookmark.contentId);
+        if (!topic) return null;
+        return {
+          id: topic.id,
+          type: 'Topic',
+          category: 'Topic',
+          categoryColor: '#059669',
+          title: topic.title,
+          summary: topic.description || topic.short_desc || '',
+          time: '35 min',
+          saved: true,
+          imageGradient: ['#059669', '#10B981'],
+          metadata: { difficulty: topic.difficulty },
+        };
+      } else {
+        const item = (state.contentItems ?? []).find((i) => i.id === bookmark.contentId);
+        if (!item) return null;
+        return {
+          ...normalizeContentItem(item),
+          type: capitalize(item.type ?? item.category ?? 'Item'),
+          time: item.time ?? item.metadata?.duration ?? '15 min',
+        };
+      }
+    })
+    .filter(Boolean);
 }
 
 function computeHistory(state, userId) {
@@ -448,8 +469,35 @@ export function createLocalBackend(storage) {
       };
     },
 
-    async fetchTopicContent(_topicId) {
-      return [];
+    async fetchTopicContent(topicId) {
+      const state = await readState();
+      // Simple mock: return some items from contentItems to simulate precomputed topic_content
+      const matchingItems = state.contentItems.filter(
+        (item) =>
+          item.title?.toLowerCase().includes(topicId.replace(/-/g, ' ')) ||
+          item.summary?.toLowerCase().includes(topicId.replace(/-/g, ' '))
+      );
+      // If we don't have matches, return a subset of items as fallback
+      const finalItems = matchingItems.length > 0 ? matchingItems : state.contentItems.slice(0, 5);
+      return finalItems.map((item) => normalizeContentItem(item)).filter(Boolean);
+    },
+
+    async fetchTopic(topicId) {
+      return {
+        id: topicId,
+        title: topicId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        difficulty: 'Intermediate',
+        description: `${topicId.replace(/-/g, ' ')} is an important concept in AI. This mock description is provided in offline demo mode.`,
+        docs_url: 'https://example.com/docs',
+      };
+    },
+
+    async triggerTopicCrawl(_topicId, _topicTitle) {
+      return { ok: true, itemsInserted: 3 };
+    },
+
+    async resolveExploreTopicId(topicId) {
+      return topicId;
     },
 
     async sendChatMessage(userId, { message, pageContext }) {

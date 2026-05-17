@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
@@ -44,6 +44,13 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const scrollRef = useRef(null);
   const insets = useSafeAreaInsets();
+  const activeStream = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (activeStream.current) clearInterval(activeStream.current);
+    };
+  }, []);
 
   const handleOpen = () => {
     Animated.sequence([
@@ -58,6 +65,11 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
       return;
     }
 
+    if (activeStream.current) {
+      clearInterval(activeStream.current);
+      activeStream.current = null;
+    }
+
     const userMessage = { id: `${Date.now()}`, role: 'user', text: rawText };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
@@ -68,15 +80,37 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
       const activeContext = useContext ? pageContext : null;
       const reply = await sendChatMessage(rawText, activeContext);
       const citationLine = reply.citations?.length ? `\n\nSources: ${reply.citations.join(' | ')}` : '';
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-reply`,
-          role: 'bot',
-          text: `${reply.answer}${citationLine}`,
-        },
-      ]);
+      const fullAnswer = `${reply.answer}${citationLine}`;
+      
+      setIsTyping(false);
+
+      // Streaming setup: split into words and spaces to preserve formatting
+      const tokens = fullAnswer.match(/([^\s]+|\s+)/g) || [fullAnswer];
+      let tokenIndex = 0;
+      const botMsgId = `${Date.now()}-reply`;
+
+      // Insert blank message shell for bot
+      setMessages((prev) => [...prev, { id: botMsgId, role: 'bot', text: '' }]);
+
+      // Stream tokens word-by-word
+      const intervalId = setInterval(() => {
+        if (tokenIndex < tokens.length) {
+          tokenIndex++;
+          const nextText = tokens.slice(0, tokenIndex).join('');
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === botMsgId ? { ...msg, text: nextText } : msg))
+          );
+          scrollRef.current?.scrollToEnd({ animated: false });
+        } else {
+          clearInterval(intervalId);
+          activeStream.current = null;
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+        }
+      }, 22);
+
+      activeStream.current = intervalId;
     } catch (error) {
+      setIsTyping(false);
       setMessages((prev) => [
         ...prev,
         {
@@ -85,11 +119,9 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
           text: error.message || 'The assistant is temporarily unavailable.',
         },
       ]);
-    } finally {
-      setIsTyping(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
     }
-  }, [input, pageContext, sendChatMessage]);
+  }, [input, pageContext, sendChatMessage, useContext]);
 
   return (
     <>
@@ -104,7 +136,7 @@ export default function FloatingChat({ isDark = false, pageContext = null }) {
 
       <Modal visible={visible} animationType="slide" transparent onRequestClose={() => setVisible(false)}>
         <Pressable style={styles.backdrop} onPress={() => setVisible(false)} />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.kvAware}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.kvAware}>
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 8 }]}>
             <View style={styles.sheetHeader}>
               <View style={styles.sheetTitleRow}>
@@ -296,10 +328,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   messages: {
-    maxHeight: 260,
+    maxHeight: 330,
   },
   messagesContent: {
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 40,
     paddingHorizontal: 16,
     gap: 12,
   },

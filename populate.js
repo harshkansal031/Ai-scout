@@ -33,7 +33,7 @@ async function run() {
     return;
   }
 
-  console.log('🚀 Regenerating with YouTube search URLs...');
+  console.log('🚀 Regenerating with Official Documentation URLs...');
 
   for (const topic of roadmaps) {
     console.log(`Generating: ${topic.title}...`);
