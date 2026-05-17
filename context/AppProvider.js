@@ -208,32 +208,8 @@ export function AppProvider({ children }) {
       
       const items = await backend.fetchFeed(type);
 
-      const effectiveInterests = profile?.interests || localInterests;
-      if (effectiveInterests && effectiveInterests.length > 0) {
-        items.sort((a, b) => {
-          const aCat = a.category?.toLowerCase() || a.type?.toLowerCase();
-          const bCat = b.category?.toLowerCase() || b.type?.toLowerCase();
-          
-          let aScore = effectiveInterests.findIndex(i => {
-            const lowerI = i.toLowerCase();
-            return aCat === lowerI || a.title?.toLowerCase().includes(lowerI) || a.summary?.toLowerCase().includes(lowerI) || a.tags?.some(t => t.toLowerCase() === lowerI);
-          });
-          let bScore = effectiveInterests.findIndex(i => {
-            const lowerI = i.toLowerCase();
-            return bCat === lowerI || b.title?.toLowerCase().includes(lowerI) || b.summary?.toLowerCase().includes(lowerI) || b.tags?.some(t => t.toLowerCase() === lowerI);
-          });
-          
-          if (aScore === -1) aScore = 999;
-          if (bScore === -1) bScore = 999;
-          
-          // Secondary sort by date if scores are equal
-          if (aScore === bScore) {
-             return new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0);
-          }
-          
-          return aScore - bScore;
-        });
-      }
+      // Always sort strictly chronologically (newest first) to guarantee the latest news is always at the top
+      items.sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0));
 
       setFeed(items);
       setFeedType(type);

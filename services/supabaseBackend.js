@@ -37,6 +37,63 @@ function mapProfile(profile, prefs) {
   };
 }
 
+function formatCompletedAt(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[d.getMonth()];
+  const day = String(d.getDate()).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${month} ${day}, ${year}`;
+}
+
+function calculateTrueStreak(history) {
+  if (!history || history.length === 0) return 0;
+  
+  const dateStrings = history.map(h => {
+    const d = new Date(h.completed_at);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  });
+  
+  const dates = [...new Set(dateStrings)].sort((a, b) => new Date(b) - new Date(a));
+  if (dates.length === 0) return 0;
+  
+  const getLocalDateStr = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  
+  const todayStr = getLocalDateStr(new Date());
+  const yesterdayStr = getLocalDateStr(new Date(Date.now() - 86400000));
+  
+  if (dates[0] !== todayStr && dates[0] !== yesterdayStr) {
+    return 0;
+  }
+  
+  let streak = 1;
+  let currentDate = new Date(dates[0]);
+  
+  for (let i = 1; i < dates.length; i++) {
+    const prevDate = new Date(dates[i]);
+    const diffTime = currentDate - prevDate;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) {
+      streak++;
+      currentDate = prevDate;
+    } else if (diffDays > 1) {
+      break;
+    }
+  }
+  
+  return streak;
+}
+
 export const supabaseBackend = {
   kind: 'supabase',
   isConfigured: isSupabaseConfigured,
@@ -110,7 +167,7 @@ export const supabaseBackend = {
       supabase.from('user_progress').select('*').eq('user_id', userId).single(),
       supabase.from('daily_topics').select('*, resources(*)').eq('is_published', true).order('publish_date', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('bookmarks_view').select('*').eq('user_id', userId),
-      supabase.from('progress_history_view').select('*').eq('user_id', userId).order('completed_at', { ascending: false }).limit(20),
+      supabase.from('progress_history').select('*').eq('user_id', userId).order('completed_at', { ascending: false }).limit(20),
     ]);
 
     if (profileResult.error) {
@@ -132,6 +189,31 @@ export const supabaseBackend = {
       throw historyResult.error;
     }
 
+    // Dynamic True Streak Verification & Lazy Correction
+    const trueStreak = calculateTrueStreak(historyResult.data);
+    const dbStreak = progressResult.data?.streak ?? 0;
+
+    if (trueStreak !== dbStreak && progressResult.data) {
+      progressResult.data.streak = trueStreak;
+      if (profileResult.data) {
+        profileResult.data.streak_count = trueStreak;
+      }
+      // Lazy fire-and-forget sync to DB
+      supabase.from('user_progress').update({ streak: trueStreak }).eq('user_id', userId).then();
+      supabase.from('profiles').update({ streak_count: trueStreak }).eq('id', userId).then();
+    }
+
+    // Format raw progress_history data to match view structure for the client
+    const formattedHistory = (historyResult.data ?? []).map(h => ({
+      history_id: h.id,
+      user_id: h.user_id,
+      id: h.topic_id,
+      title: h.title,
+      type: 'Topic',
+      completed_at: formatCompletedAt(h.completed_at),
+      metadata: h.metadata
+    }));
+
     return {
       profile: mapProfile(profileResult.data, preferenceResult.data),
       progress: progressResult.data
@@ -142,13 +224,13 @@ export const supabaseBackend = {
             weekDays: progressResult.data.week_days ?? [],
             streak: progressResult.data.streak,
             completedTopicIds: progressResult.data.completed_topic_ids ?? [],
-            history: historyResult.data ?? [],
+            history: formattedHistory,
           }
         : null,
       todayTopic: normalizeTopic(topicResult.data),
       continueLearning: progressResult.data?.continue_learning ?? [],
       savedItems: (bookmarksResult.data ?? []).map(normalizeContentItem),
-      historyItems: historyResult.data ?? [],
+      historyItems: formattedHistory,
       notificationPreferences: preferenceResult.data?.notification_preferences ?? {
         dailyTopic: true,
         breakingNews: true,

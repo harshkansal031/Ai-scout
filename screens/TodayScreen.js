@@ -99,7 +99,7 @@ export default function TodayScreen({ navigation }) {
 
         <TouchableOpacity style={styles.startBtn} onPress={() => navigation.navigate('Lecture', { topic: todayTopic })} activeOpacity={0.88}>
           <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.startBtnGrad}>
-            <Text style={styles.startBtnText}>Start Lesson</Text>
+            <Text style={styles.startBtnText}>Start Learning</Text>
             <Ionicons name="play" size={16} color="#FFF" style={{ marginLeft: 6 }} />
           </LinearGradient>
         </TouchableOpacity>

@@ -430,6 +430,17 @@ export function createLocalBackend(storage) {
         progress.topicsCompleted += 1;
         progress.weeklyPercent = Math.min(100, progress.weeklyPercent + 8);
         progress.history = [{ id: topicId, title: state.dailyTopics.find((topic) => topic.id === topicId)?.title ?? 'Completed Topic', type: 'Topic', time: '35 min', completedAt: 'Just now', imageGradient: ['#1E3A5F', '#2563EB'] }, ...progress.history];
+        
+        // Update weekDays array (Monday-based: 0=Mon, ..., 6=Sun)
+        const day = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+        const mondayIndex = day === 0 ? 6 : day - 1;
+        if (!progress.weekDays || !Array.isArray(progress.weekDays)) {
+          progress.weekDays = [false, false, false, false, false, false, false];
+        } else {
+          // Clone to prevent direct mutation references
+          progress.weekDays = [...progress.weekDays];
+        }
+        progress.weekDays[mondayIndex] = true;
       }
       state.progress[userId] = progress;
       await writeState(state);
