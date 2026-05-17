@@ -67,12 +67,12 @@ export default function ExploreScreen({ navigation }) {
 
   // Navigation Stack for Drill-Down
   const [stack, setStack] = useState([
-    { level: 'root', data: roadmaps || [], title: 'Explore AI', id: 'root' },
+    { level: 'root', data: roadmaps || [], title: 'Explore', id: 'root' },
   ]);
 
   useEffect(() => {
     if (stack.length === 1 && roadmaps && roadmaps.length > 0) {
-      setStack([{ level: 'root', data: roadmaps, title: 'Explore AI', id: 'root' }]);
+      setStack([{ level: 'root', data: roadmaps, title: 'Explore', id: 'root' }]);
     }
   }, [roadmaps]);
 
