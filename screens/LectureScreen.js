@@ -72,7 +72,7 @@ export default function LectureScreen({ route, navigation }) {
           </View>
         </View>
 
-        <DynamicTopicDiagram fieldSlug={topic.field_slug || topic.fieldSlug} topicTitle={topic.title} />
+        <DynamicTopicDiagram fieldSlug={topic.field_slug || topic.fieldSlug} />
 
         <View style={[styles.tabsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {TABS.map((tab, idx) => (
