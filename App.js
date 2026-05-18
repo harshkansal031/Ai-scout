@@ -1,6 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import React from 'react';
-import { ActivityIndicator, Platform, Text, View, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { Platform, Text, View, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -19,6 +19,7 @@ import AuthScreen from './screens/AuthScreen';
 
 import { DARK, LIGHT } from './constants/theme';
 import { AppProvider, useApp } from './context/AppProvider';
+import SplashGate from './components/SplashGate';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -185,17 +186,10 @@ function MainTabs() {
 }
 
 function RootNavigation() {
-  const { session, authLoading, backendKind } = useApp();
+  const { session, authLoading } = useApp();
 
   if (authLoading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: DARK.bg, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-        <ActivityIndicator size="large" color={LIGHT.primary} />
-        <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>
-          Loading {backendKind === 'supabase' ? 'backend session' : 'local workspace'}...
-        </Text>
-      </View>
-    );
+    return null;
   }
 
   return (
@@ -220,7 +214,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AppProvider>
-          <RootNavigation />
+          <SplashGate>
+            <RootNavigation />
+          </SplashGate>
         </AppProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email confirmed · AI Scout</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(ellipse at top, #10172a 0%, #080b14 55%);
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 420px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 36px 28px;
+      text-align: center;
+      backdrop-filter: blur(12px);
+    }
+    .check {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.2);
+      border: 1px solid rgba(59, 130, 246, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    p {
+      margin: 0;
+      line-height: 1.55;
+      color: rgba(229, 231, 235, 0.82);
+      font-size: 1rem;
+    }
+    .muted {
+      margin-top: 18px;
+      font-size: 0.875rem;
+      color: rgba(156, 163, 175, 0.95);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="check" aria-hidden="true">✓</div>
+    <h1>Thank you for registering</h1>
+    <p>Your email is confirmed. You can close this tab and open the <strong>AI Scout</strong> app to sign in.</p>
+    <p class="muted">If you already have the app installed, launch it and use Sign In with your email and password.</p>
+  </div>
+</body>
+</html>

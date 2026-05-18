@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../lib/supabase.js';
-import { isSupabaseConfigured } from '../lib/env.js';
+import { ENV, isSupabaseConfigured } from '../lib/env.js';
 import { groupExploreResults, normalizeContentItem, normalizeTopic } from './mappers.js';
 import { sanitizeRoadmapContent } from './roadmapUrls.js';
 
@@ -122,17 +122,41 @@ export const supabaseBackend = {
 
   async signUp({ email, password, name }) {
     const supabase = getClient();
+    const redirectTo = ENV.authEmailConfirmRedirectUrl?.trim();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { name },
+        ...(redirectTo ? { emailRedirectTo: redirectTo } : {}),
       },
     });
     if (error) {
       throw error;
     }
-    return data.session;
+    const pendingEmailConfirmation = Boolean(data.user && !data.session);
+    if (pendingEmailConfirmation && !redirectTo) {
+      console.warn(
+        '[AI Scout] Email confirmation was sent without emailRedirectTo. Set EXPO_PUBLIC_AUTH_EMAIL_CONFIRM_REDIRECT_URL (HTTPS) and add it in Supabase → Auth → Redirect URLs, then rebuild the app and use Resend or sign up again.',
+      );
+    }
+    return {
+      session: data.session ?? null,
+      pendingEmailConfirmation,
+    };
+  },
+
+  async resendSignupConfirmation(email) {
+    const supabase = getClient();
+    const redirectTo = ENV.authEmailConfirmRedirectUrl?.trim();
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      ...(redirectTo ? { options: { emailRedirectTo: redirectTo } } : {}),
+    });
+    if (error) {
+      throw error;
+    }
   },
 
   async signIn({ email, password }) {
@@ -285,6 +309,18 @@ export const supabaseBackend = {
     }
 
     return (data ?? []).map(normalizeContentItem);
+  },
+
+  /** After client successfully loads OG image — merge into metadata so pulls stay stable. */
+  async persistNewsThumbnail(contentId, imageUrl) {
+    const supabase = getClient();
+    const { error } = await supabase.rpc('merge_news_thumbnail', {
+      p_content_id: contentId,
+      p_image_url: imageUrl,
+    });
+    if (error) {
+      throw error;
+    }
   },
 
   async fetchRoadmaps() {

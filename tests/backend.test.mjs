@@ -17,7 +17,7 @@ function createMemoryStorage() {
 test('local backend supports auth, bookmarks, progress, search, and chat', async () => {
   const backend = createLocalBackend(createMemoryStorage());
 
-  const session = await backend.signUp({
+  const { session } = await backend.signUp({
     name: 'Scout Tester',
     email: 'tester@example.com',
     password: 'password123',

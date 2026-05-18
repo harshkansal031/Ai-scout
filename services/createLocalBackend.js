@@ -346,7 +346,7 @@ export function createLocalBackend(storage) {
       state.session = createSession(user);
       await writeState(state);
       emit('SIGNED_IN', state.session);
-      return state.session;
+      return { session: state.session, pendingEmailConfirmation: false };
     },
     async signIn({ email, password }) {
       const state = await readState();
@@ -381,6 +381,7 @@ export function createLocalBackend(storage) {
       await writeState(state);
       emit('SIGNED_OUT', null);
     },
+    async resendSignupConfirmation() {},
     async getBootstrapData(userId) {
       const state = await readState();
       return {
@@ -404,6 +405,9 @@ export function createLocalBackend(storage) {
       if (type === 'papers') return normalized.filter((item) => item.type === 'paper' || item.category === 'Papers');
       if (type === 'tools') return normalized.filter((item) => item.type === 'tool' || item.category === 'Tools');
       return normalized.filter((item) => item.type === 'news' || item.type === 'research' || item.type === 'paper');
+    },
+    async persistNewsThumbnail(_contentId, _imageUrl) {
+      /* Offline mock: no-op */
     },
     async searchExplore(query) {
       const state = await readState();

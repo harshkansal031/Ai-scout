@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { getBackend } from '../services/backend';
 import { 
   registerForPushNotificationsAsync,
@@ -9,9 +9,13 @@ import {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { ENV } from '../lib/env';
+
 const AppContext = createContext(null);
 
 const backend = getBackend();
+
+const emailConfirmRedirectConfigured = Boolean(ENV.authEmailConfirmRedirectUrl?.trim());
 
 const EMPTY_EXPLORE = {
   query: '',
@@ -35,6 +39,12 @@ export function AppProvider({ children }) {
   const [historyItems, setHistoryItems] = useState([]);
   const [feed, setFeed] = useState([]);
   const [feedType, setFeedType] = useState('news');
+  const [signupEmailVerificationPending, setSignupEmailVerificationPending] = useState(null);
+
+  const clearSignupEmailPending = useCallback(() => {
+    setSignupEmailVerificationPending(null);
+  }, []);
+
   const [roadmaps, setRoadmaps] = useState([]);
   const [exploreResults, setExploreResults] = useState(EMPTY_EXPLORE);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
@@ -102,6 +112,7 @@ export function AppProvider({ children }) {
   };
 
   const [ogCache, setOgCache] = useState({});
+  const thumbnailPersistSessionRef = useRef(new Set());
 
   useEffect(() => {
     async function loadOgCache() {
@@ -238,6 +249,7 @@ export function AppProvider({ children }) {
 
   async function signIn(email, password) {
     setError('');
+    setSignupEmailVerificationPending(null);
     setAuthLoading(true);
     try {
       const nextSession = await backend.signIn({ email, password });
@@ -255,9 +267,20 @@ export function AppProvider({ children }) {
     setError('');
     setAuthLoading(true);
     try {
-      const nextSession = await backend.signUp({ name, email, password });
-      setSession(nextSession);
-      return nextSession;
+      const result = await backend.signUp({ name, email, password });
+      if (result.pendingEmailConfirmation) {
+        setSession(null);
+        setSignupEmailVerificationPending(email.trim());
+        try {
+          await backend.signOut();
+        } catch (_) {
+          /* no active session */
+        }
+        return result;
+      }
+      setSignupEmailVerificationPending(null);
+      setSession(result.session);
+      return result;
     } catch (nextError) {
       setError(nextError.message);
       throw nextError;
@@ -270,10 +293,27 @@ export function AppProvider({ children }) {
     setAuthLoading(true);
     try {
       await backend.signOut();
+      setSignupEmailVerificationPending(null);
       setSession(null);
       resetUserData();
     } catch (nextError) {
       setError(nextError.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function resendSignupConfirmationEmail(email) {
+    setError('');
+    if (backend.kind !== 'supabase' || !backend.resendSignupConfirmation) {
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      await backend.resendSignupConfirmation(email);
+    } catch (nextError) {
+      setError(nextError.message);
+      throw nextError;
     } finally {
       setAuthLoading(false);
     }
@@ -315,6 +355,38 @@ export function AppProvider({ children }) {
       setDataLoading(false);
     }
   }
+
+  const persistNewsThumbnail = useCallback(async (contentId, imageUrl) => {
+    if (!contentId || typeof imageUrl !== 'string') return;
+    const trimmed = imageUrl.trim();
+    if (!trimmed.startsWith('http')) return;
+    if (trimmed.includes('logo.clearbit.com')) return;
+    if (backend.kind !== 'supabase' || typeof backend.persistNewsThumbnail !== 'function') return;
+
+    if (thumbnailPersistSessionRef.current.has(contentId)) return;
+    thumbnailPersistSessionRef.current.add(contentId);
+
+    try {
+      await backend.persistNewsThumbnail(contentId, trimmed);
+      setFeed((prev) =>
+        prev.map((item) =>
+          item.id !== contentId
+            ? item
+            : {
+                ...item,
+                imageUrl: trimmed,
+                metadata: {
+                  ...(item.metadata && typeof item.metadata === 'object' ? item.metadata : {}),
+                  imageUrl: trimmed,
+                },
+              },
+        ),
+      );
+    } catch (e) {
+      thumbnailPersistSessionRef.current.delete(contentId);
+      console.warn('[persistNewsThumbnail]', e.message);
+    }
+  }, []);
 
   async function searchExplore(query) {
     setDataLoading(true);
@@ -547,6 +619,7 @@ export function AppProvider({ children }) {
     () => ({
       backendKind: backend.kind,
       backendConfigured: backend.kind === 'supabase',
+      emailConfirmRedirectConfigured,
       session,
       authLoading,
       dataLoading,
@@ -567,7 +640,11 @@ export function AppProvider({ children }) {
       signIn,
       signUp,
       signOut,
+      signupEmailVerificationPending,
+      clearSignupEmailPending,
+      resendSignupConfirmationEmail,
       refreshFeed,
+      persistNewsThumbnail,
       searchExplore,
       toggleBookmark,
       markTopicComplete,
@@ -597,6 +674,7 @@ export function AppProvider({ children }) {
       progress,
       savedItems,
       session,
+      signupEmailVerificationPending,
       todayTopic,
       continueLearning,
       localInterests,
@@ -604,6 +682,7 @@ export function AppProvider({ children }) {
       upcomingEvents,
       brandCache,
       ogCache,
+      persistNewsThumbnail,
     ],
   );
 

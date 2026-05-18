@@ -20,12 +20,23 @@ import { DARK, FONTS, LIGHT, RADIUS, SPACING } from '../constants/theme';
 const TABS = ['Sign In', 'Sign Up'];
 
 export default function AuthScreen() {
-  const { signIn, signUp, authLoading, error, backendKind } = useApp();
+  const {
+    signIn,
+    signUp,
+    authLoading,
+    error,
+    backendKind,
+    signupEmailVerificationPending,
+    clearSignupEmailPending,
+    emailConfirmRedirectConfigured,
+    resendSignupConfirmationEmail,
+  } = useApp();
   const [activeTab, setActiveTab] = useState(0);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
+  const [resendNotice, setResendNotice] = useState('');
 
   async function handleSubmit() {
     setLocalError('');
@@ -51,6 +62,18 @@ export default function AuthScreen() {
     setEmail('alex@aiscout.dev');
     setPassword('password123');
     setLocalError('');
+  }
+
+  async function handleResendConfirmation() {
+    if (!signupEmailVerificationPending) return;
+    setLocalError('');
+    setResendNotice('');
+    try {
+      await resendSignupConfirmationEmail(signupEmailVerificationPending);
+      setResendNotice('We sent another confirmation email. Use the new link.');
+    } catch (submitError) {
+      setLocalError(submitError.message || 'Could not resend email.');
+    }
   }
 
   return (
@@ -79,7 +102,9 @@ export default function AuthScreen() {
               style={{ width: 44, height: 44, resizeMode: 'contain' }} 
             />
           </View>
-          <Text style={styles.heroTitle}>AI Scout</Text>
+          <Text style={styles.heroTitle}>
+            Scout <Text style={{ color: DARK.primary }}>AI</Text>
+          </Text>
           <Text style={styles.heroSubtitle}>
             Daily AI learning, live research, saved reading, and a grounded mobile assistant.
           </Text>
@@ -90,6 +115,50 @@ export default function AuthScreen() {
           </View>
         </LinearGradient>
 
+        {signupEmailVerificationPending ? (
+          <View style={[styles.card, styles.verificationCard]}>
+            <View style={styles.verificationIconWrap}>
+              <Ionicons name="mail-outline" size={36} color={LIGHT.primary} />
+            </View>
+            <Text style={styles.verificationTitle}>Confirm your email</Text>
+            <Text style={styles.verificationBody}>
+              We sent a confirmation link to{' '}
+              <Text style={styles.verificationEmail}>{signupEmailVerificationPending}</Text>. Open it to verify your
+              account, then come back here to sign in.
+            </Text>
+            {!emailConfirmRedirectConfigured ? (
+              <Text style={styles.verificationHint}>
+                After you tap the link in the email, you will only see your custom thank-you page if{' '}
+                <Text style={styles.verificationEmail}>EXPO_PUBLIC_AUTH_EMAIL_CONFIRM_REDIRECT_URL</Text> is set to a live
+                HTTPS URL, that URL is listed in Supabase → Authentication → Redirect URLs, and you restart the bundler /
+                rebuild the app — then tap &quot;Resend confirmation email&quot; so the new link includes that redirect.
+              </Text>
+            ) : (
+              <Text style={styles.verificationHintMuted}>
+                If the link does not open your thank-you page, confirm the same URL is in Supabase → Authentication →
+                Redirect URLs (exact match, including path), then resend below.
+              </Text>
+            )}
+            {resendNotice ? <Text style={styles.verificationSuccess}>{resendNotice}</Text> : null}
+            {(localError || error) ? <Text style={styles.errorText}>{localError || error}</Text> : null}
+            <TouchableOpacity
+              style={[styles.secondaryButton, authLoading && { opacity: 0.65 }]}
+              onPress={handleResendConfirmation}
+              disabled={authLoading}
+            >
+              <Text style={styles.secondaryButtonText}>Resend confirmation email</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={() => {
+                clearSignupEmailPending();
+                setActiveTab(0);
+              }}
+            >
+              <Text style={styles.submitText}>Continue to Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
         <View style={[styles.card, { flexGrow: 1 }]}>
           <View style={styles.tabRow}>
             {TABS.map((tab, index) => (
@@ -139,6 +208,7 @@ export default function AuthScreen() {
             </View>
           ) : null}
         </View>
+        )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -311,5 +381,74 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 4,
+  },
+  verificationCard: {
+    flexGrow: 1,
+    gap: 14,
+    alignItems: 'stretch',
+    paddingVertical: SPACING.xxl,
+  },
+  verificationIconWrap: {
+    alignSelf: 'center',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: LIGHT.surface,
+    borderWidth: 1,
+    borderColor: LIGHT.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  verificationTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: LIGHT.text,
+    textAlign: 'center',
+  },
+  verificationBody: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: LIGHT.textSub,
+    textAlign: 'center',
+  },
+  verificationEmail: {
+    fontWeight: '700',
+    color: LIGHT.text,
+  },
+  verificationHint: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: LIGHT.textSub,
+    textAlign: 'center',
+    backgroundColor: LIGHT.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: LIGHT.border,
+    padding: 14,
+  },
+  verificationHintMuted: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: LIGHT.textMuted,
+    textAlign: 'center',
+  },
+  verificationSuccess: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#059669',
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    borderWidth: 1.5,
+    borderColor: LIGHT.primary,
+    borderRadius: RADIUS.lg,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: LIGHT.primary,
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

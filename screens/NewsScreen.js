@@ -32,23 +32,41 @@ function getDomainLogo(url) {
   }
 }
 
-function FeaturedThumbnail({ featured, colors }) {
-  const [useFallback, setUseFallback] = React.useState(false);
-  const imageUrl = featured.imageUrl || featured.metadata?.imageUrl || featured.metadata?.image_url || featured.metadata?.ogImage;
-  const logoUrl = !imageUrl && featured.sourceUrl ? getDomainLogo(featured.sourceUrl) : null;
-  const finalUri = imageUrl || logoUrl;
+/**
+ * News images are remote OG/CDN URLs — loads can fail intermittently (timeouts, 403, flaky mobile network).
+ * We reset phase when the article or URL changes, and try site logo before the generic gradient.
+ */
+function FeaturedThumbnail({ featured, colors, onPrimaryImageLoaded }) {
+  const primary =
+    featured.imageUrl || featured.metadata?.imageUrl || featured.metadata?.image_url || featured.metadata?.ogImage || null;
+  const logo = featured.sourceUrl ? getDomainLogo(featured.sourceUrl) : null;
 
-  const imageSource = finalUri && !logoUrl ? buildArticleImageSource(finalUri, featured.sourceUrl) : { uri: finalUri };
+  const [phase, setPhase] = React.useState(() => (primary ? 'primary' : logo ? 'logo' : 'gradient'));
 
-  if (finalUri && !useFallback && imageSource) {
+  React.useEffect(() => {
+    setPhase(primary ? 'primary' : logo ? 'logo' : 'gradient');
+  }, [featured.id, primary, logo]);
+
+  if (phase === 'primary' && primary) {
+    const imageSource = buildArticleImageSource(primary, featured.sourceUrl);
+    if (imageSource) {
+      return (
+        <Image
+          source={imageSource}
+          style={styles.featuredImage}
+          onLoad={() => onPrimaryImageLoaded?.(featured.id, primary)}
+          onError={() => setPhase(logo ? 'logo' : 'gradient')}
+        />
+      );
+    }
+  }
+
+  if (phase === 'logo' && logo) {
     return (
-      <Image 
-        source={imageSource} 
-        style={[
-          styles.featuredImage, 
-          logoUrl && { resizeMode: 'contain', backgroundColor: '#FFFFFF', padding: 20 }
-        ]} 
-        onError={() => setUseFallback(true)}
+      <Image
+        source={{ uri: logo }}
+        style={[styles.featuredImage, { resizeMode: 'contain', backgroundColor: '#FFFFFF', padding: 20 }]}
+        onError={() => setPhase('gradient')}
       />
     );
   }
@@ -60,23 +78,37 @@ function FeaturedThumbnail({ featured, colors }) {
   );
 }
 
-function Thumbnail({ item, colors }) {
-  const [useFallback, setUseFallback] = React.useState(false);
-  const imageUrl = item.imageUrl || item.metadata?.imageUrl || item.metadata?.image_url || item.metadata?.ogImage;
-  const logoUrl = !imageUrl && item.sourceUrl ? getDomainLogo(item.sourceUrl) : null;
-  const finalUri = imageUrl || logoUrl;
+function Thumbnail({ item, colors, onPrimaryImageLoaded }) {
+  const primary =
+    item.imageUrl || item.metadata?.imageUrl || item.metadata?.image_url || item.metadata?.ogImage || null;
+  const logo = item.sourceUrl ? getDomainLogo(item.sourceUrl) : null;
 
-  const imageSource = finalUri && !logoUrl ? buildArticleImageSource(finalUri, item.sourceUrl) : { uri: finalUri };
+  const [phase, setPhase] = React.useState(() => (primary ? 'primary' : logo ? 'logo' : 'gradient'));
 
-  if (finalUri && !useFallback && imageSource) {
+  React.useEffect(() => {
+    setPhase(primary ? 'primary' : logo ? 'logo' : 'gradient');
+  }, [item.id, primary, logo]);
+
+  if (phase === 'primary' && primary) {
+    const imageSource = buildArticleImageSource(primary, item.sourceUrl);
+    if (imageSource) {
+      return (
+        <Image
+          source={imageSource}
+          style={styles.thumbnail}
+          onLoad={() => onPrimaryImageLoaded?.(item.id, primary)}
+          onError={() => setPhase(logo ? 'logo' : 'gradient')}
+        />
+      );
+    }
+  }
+
+  if (phase === 'logo' && logo) {
     return (
-      <Image 
-        source={imageSource} 
-        style={[
-          styles.thumbnail, 
-          logoUrl && { resizeMode: 'contain', backgroundColor: '#FFFFFF', padding: 8 }
-        ]} 
-        onError={() => setUseFallback(true)}
+      <Image
+        source={{ uri: logo }}
+        style={[styles.thumbnail, { resizeMode: 'contain', backgroundColor: '#FFFFFF', padding: 8 }]}
+        onError={() => setPhase('gradient')}
       />
     );
   }
@@ -89,7 +121,7 @@ function Thumbnail({ item, colors }) {
 }
 
 export default function NewsScreen() {
-  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems, trackItemClick } = useApp();
+  const { themeMode, feed, refreshFeed, feedType, toggleBookmark, savedItems, trackItemClick, persistNewsThumbnail } = useApp();
   const colors = usePalette(themeMode);
   const [activeTab, setActiveTab] = useState(feedType);
   const [refreshing, setRefreshing] = useState(false);
@@ -183,7 +215,7 @@ export default function NewsScreen() {
           }}
           style={[styles.featuredCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         >
-          <FeaturedThumbnail featured={featured} colors={colors} />
+          <FeaturedThumbnail featured={featured} colors={colors} onPrimaryImageLoaded={persistNewsThumbnail} />
           <View style={styles.featuredContent}>
             <View style={[styles.categoryBadge, { backgroundColor: `${featured.categoryColor ?? colors.primary}18` }]}>
               <Text style={[styles.categoryText, { color: featured.categoryColor ?? colors.primary }]}>{featured.category}</Text>
@@ -213,7 +245,7 @@ export default function NewsScreen() {
       }}
       style={[styles.newsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
     >
-      <Thumbnail item={item} colors={colors} />
+      <Thumbnail item={item} colors={colors} onPrimaryImageLoaded={persistNewsThumbnail} />
       <View style={{ flex: 1 }}>
         <View style={[styles.categoryBadge, { backgroundColor: `${item.categoryColor ?? colors.primary}18`, alignSelf: 'flex-start' }]}>
           <Text style={[styles.categoryText, { color: item.categoryColor ?? colors.primary }]}>{item.category}</Text>

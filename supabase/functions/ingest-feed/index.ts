@@ -299,24 +299,49 @@ async function fetchHackerNews(): Promise<FeedItem[]> {
     );
     
     // Score > 100 for big news to ensure we don't return empty results on slow days
-    const highImpact = items.filter(item => item && item.score && item.score > 100 && item.url);
-    
-    return highImpact.map(item => {
+    const highImpact = items.filter((item) => item && item.score && item.score > 100 && item.url);
+
+    const enrichMax = 15;
+    const toEnrich = highImpact.slice(0, enrichMax);
+    const resolvedByStoryId = new Map<number, { linkUrl: string; ogImageUrl: string | null }>();
+
+    await Promise.all(
+      toEnrich.map(async (item) => {
+        const rawUrl = item.url.trim().replace(/\s+/g, '');
+        const resolved = await resolveAndValidateUrl(rawUrl);
+        resolvedByStoryId.set(item.id, {
+          linkUrl: resolved.isValid ? resolved.finalUrl : rawUrl,
+          ogImageUrl: resolved.ogImageUrl,
+        });
+      }),
+    );
+
+    return highImpact.map((item) => {
+      const rawUrl = item.url.trim().replace(/\s+/g, '');
+      const enriched = resolvedByStoryId.get(item.id);
+      const linkUrl = enriched?.linkUrl ?? rawUrl;
+
+      const metadata: Record<string, unknown> = {
+        ingested_at: new Date().toISOString(),
+        score: item.score,
+      };
+      if (enriched?.ogImageUrl) metadata.imageUrl = enriched.ogImageUrl;
+
       const summary = `Trending on Hacker News with ${item.score} points. ${item.title}`;
       const tags = Array.from(new Set(['news', ...getSmartTags(item.title, summary, [])]));
-      
+
       return {
         id: `hn-${item.id}`,
-        type: 'news',
+        type: 'news' as const,
         title: item.title,
-        summary: summary,
+        summary,
         source_name: 'Hacker News',
-        source_url: item.url,
-        canonical_url: item.url,
+        source_url: linkUrl,
+        canonical_url: linkUrl,
         published_at: new Date(item.time * 1000).toISOString(),
         external_id: String(item.id),
         tags,
-        metadata: { ingested_at: new Date().toISOString(), score: item.score },
+        metadata,
       };
     });
   } catch (e) {

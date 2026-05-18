@@ -12,7 +12,9 @@
     "seed:library:replace": "node seed-ai-library.js --replace",
     "seed:generate": "node generate-missing-roadmaps.js --limit 15",
     "prefill:topics": "node scripts/prefill_topic_content.js --limit 50",
-    "prefill:topics:all": "node scripts/prefill_topic_content.js --all --batch-size 40 --delay 2500"
+    "prefill:topics:all": "node scripts/prefill_topic_content.js --all --batch-size 40 --delay 2500",
+    "ingest:trigger": "node scripts/trigger-ingest-feed.mjs",
+    "ingest:backfill-og": "node scripts/backfill-og-images.mjs --limit 50"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
