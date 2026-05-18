@@ -2,7 +2,7 @@
   "expo": {
     "name": "Scout AI",
     "slug": "ai-scout",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "scheme": "aiscout",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
